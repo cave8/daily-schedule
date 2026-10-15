@@ -658,6 +658,51 @@
   }
 
 
+  // ---------------- Apple (tramite l'app per Mac, sola lettura) ----------------
+  let appleBusy = false;
+  function appleRefreshStatus() {
+    if (!G.apple.available()) return Promise.resolve(null);
+    return G.apple.call("status").then((st) => { ui.appleStatus = st; return st; }).catch(() => null);
+  }
+
+  function appleSync(force) {
+    if (mode !== "real" || !G.apple.available() || appleBusy) return;
+    const integ = state.integrations || {};
+    const cal = integ.calendar === "connected", rem = integ.reminders === "connected";
+    if (!cal && !rem) return;
+    const last = (state.appleSync && state.appleSync.at) || 0;
+    if (!force && now() - last < 5 * 60000) return;
+    appleBusy = true;
+    G.apple.call("fetch", { days: (state.settings.horizonDays || 14) + 7, calendar: cal, reminders: rem }).then((data) => {
+      appleBusy = false;
+      if (data && data.status) ui.appleStatus = data.status;
+      const okCal = cal && data.status && data.status.calendar === "fullAccess";
+      const okRem = rem && data.status && data.status.reminders === "fullAccess";
+      const sum = G.apple.merge(state, data, now(), { calendar: okCal, reminders: okRem });
+      state.appleSync = { at: now(), events: okCal ? sum.events : null, reminders: okRem ? sum.reminders : null, error: null };
+      cleanCheckins(); replan(); save(); render();
+    }).catch((err) => {
+      appleBusy = false;
+      state.appleSync = Object.assign({}, state.appleSync, { error: String(err && err.message || err) });
+      save(); render();
+    });
+  }
+
+  function appleConnect(kind) {
+    G.apple.call("requestAccess", { kind }).then((st) => {
+      ui.appleStatus = st;
+      if (st && st[kind] === "fullAccess") {
+        state.integrations = Object.assign({}, state.integrations, { [kind]: "connected" });
+        save();
+        toast(kind === "calendar" ? "Apple Calendar collegato" : "Apple Promemoria collegato");
+        appleSync(true);
+      } else {
+        render();
+        toast("Permesso non concesso: nessun dato letto");
+      }
+    }).catch(() => toast("Non riesco a parlare con l'app per Mac"));
+  }
+
   // ---------------- Oscurare (nascondere senza cancellare) ----------------
   // Chiave: "e:idOccorrenza" per gli appuntamenti, "t:idAttività@giorno" per i promemoria Apple.
   function hideKeyFor(b) {
@@ -1165,9 +1210,9 @@
       row(I.user, "", "Il tuo nome", "", '<input type="text" data-set="name" value="' + esc(state.profile.name) + '" placeholder="Facoltativo">') + "</div>";
 
     html += '<div class="sec"><h2>Collegamenti Apple</h2></div><div class="group">' +
-      row(I.calendar, "orange", "Apple Calendar", "Leggere gli appuntamenti; modificarli solo con la tua conferma", stLbl(integ.calendar)) +
-      row(I.bell, "orange", "Apple Promemoria", "Leggere i promemoria e le scadenze; modificarli solo con la tua conferma", stLbl(integ.reminders)) + "</div>" +
-      '<p class="g-foot">Per collegarli serve la piccola app gratuita «Daily Schedule per Mac» (prossimo passo). I permessi vengono chiesti solo quando attivi tu il collegamento.</p>';
+      appleRow("calendar", I.calendar, "Apple Calendar", integ.calendar, stLbl) +
+      appleRow("reminders", I.bell, "Apple Promemoria", integ.reminders, stLbl) + "</div>" +
+      appleFoot();
 
     html += '<div class="sec"><h2>Orari disponibili</h2></div><div class="group">' +
       order.map((d) => {
@@ -1223,8 +1268,35 @@
     html += '<div class="sec"><h2>Installa</h2></div><div class="group">' +
       row(I.phone, "", "iPhone", "In Safari: Condividi, poi «Aggiungi alla schermata Home»", "") +
       row(I.laptop, "", "Mac", "In Safari: menu File, poi «Aggiungi al Dock»", "") + "</div>" +
-      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione 0.6</p>';
+      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione 0.7</p>';
     return html;
+  }
+
+  // Riga di un collegamento Apple nelle Impostazioni
+  function appleRow(kind, icon, title, value, stLbl) {
+    const row = (sub, right) => '<div class="g-row"><span class="gi orange">' + icon + '</span><div class="gt"><b>' + title + "</b><span>" + sub + "</span></div>" + right + "</div>";
+    if (mode === "demo") return row("Dati finti della demo", stLbl("demo"));
+    if (!G.apple.available()) return row(kind === "calendar" ? "Leggere gli appuntamenti" : "Leggere i promemoria e le scadenze", stLbl("off"));
+    const perm = (ui.appleStatus || {})[kind];
+    if (value === "connected" && perm === "fullAccess") {
+      const sync = state.appleSync || {};
+      const n = kind === "calendar" ? sync.events : sync.reminders;
+      const sub = sync.error ? "Errore: " + esc(sync.error) : sync.at ? "Aggiornato alle " + T.fmtHM(sync.at) + (n != null ? " · " + n + (kind === "calendar" ? " eventi" : " promemoria aperti") : "") : "In aggiornamento…";
+      return row(sub, '<span class="status on">Collegato</span><button class="btn small ghost" data-act="apple-disconnect" data-kind="' + kind + '">Scollega</button>');
+    }
+    if (perm === "denied" || perm === "restricted") {
+      return row("Permesso negato. Per attivarlo: Impostazioni di Sistema → Privacy e sicurezza → " + (kind === "calendar" ? "Calendari" : "Promemoria") + " → Daily Schedule", '<span class="status">Bloccato</span>');
+    }
+    if (perm === "writeOnly") return row("Il Mac ha dato solo il permesso di scrittura: serve «Accesso completo» in Privacy e sicurezza", '<span class="status">Incompleto</span>');
+    return row(kind === "calendar" ? "Leggo i tuoi appuntamenti, senza modificarli" : "Leggo i promemoria aperti, senza modificarli",
+      '<button class="btn small primary" data-act="apple-connect" data-kind="' + kind + '">Collega</button>');
+  }
+
+  function appleFoot() {
+    if (mode === "demo") return '<p class="g-foot">Nella demo gli elementi Apple sono finti. Esci dalla demo per collegare i tuoi.</p>';
+    if (!G.apple.available()) return '<p class="g-foot">Per collegarli apri Daily Schedule con l\'app per Mac («Daily Schedule» nella cartella Applicazioni). Dal browser e dall\'iPhone il Calendario del Mac non è raggiungibile.</p>';
+    return '<p class="g-foot">Sola lettura: Daily Schedule non crea, non modifica e non cancella nulla in Calendario e Promemoria. ' +
+      '<button class="link small" data-act="apple-sync">Aggiorna ora</button></p>';
   }
 
   function setNum(key, label, sub, val, min, max) {
@@ -1438,6 +1510,15 @@
     }
     if (!Object.keys(after).length) { toast("Nessuna modifica"); return; }
     const op = PR.op(state, type, { targetId: item.id, after });
+    if (mode === "real") {
+      // Le informazioni di Daily Schedule (area, durata, passi…) si salvano subito; i dati Apple non si toccano
+      const internal = {};
+      for (const k of Object.keys(after)) if (!PR.touchesApple(Object.assign({}, op, { after: { [k]: after[k] } }))) internal[k] = after[k];
+      const blocked = Object.keys(after).length - Object.keys(internal).length;
+      if (Object.keys(internal).length) commit((s) => Object.assign((type === "update_event" ? s.events : s.tasks).find((x) => x.id === item.id), internal), null);
+      toast(blocked ? "Ho salvato le tue note. Titolo, orari e scadenze si cambiano dall'app " + (type === "update_event" ? "Calendario" : "Promemoria") + " (da qui in un prossimo aggiornamento)." : "Salvato");
+      return;
+    }
     const p = newProposal([op], { summary, reason: "Modifica fatta da te nel modulo." });
     addMsg({ role: "assistant", text: "Hai modificato un elemento " + (type === "update_event" ? "di Apple Calendar" : "di Apple Promemoria") + ". Ecco l'anteprima: lo cambio solo se confermi.", proposalId: p.id });
     ui.tab = "assistente"; rememberTab();
@@ -1449,6 +1530,10 @@
     const t = taskById(id);
     if (!t) return;
     closeModal();
+    if (isApple(t.source) && mode === "real") {
+      toast("Segnalo come completato nell'app Promemoria: qui si aggiorna da solo. Intanto puoi oscurarlo per oggi.");
+      return;
+    }
     if (isApple(t.source)) {
       // completare un promemoria Apple modifica un dato Apple: serve conferma
       const p = newProposal([PR.op(state, "complete_task", { targetId: id })], { summary: "Completare «" + t.title + "» in Apple Promemoria", reason: "L'hai segnato come fatto." });
@@ -1753,6 +1838,14 @@
           break;
         }
         case "hide": hideItem(a.dataset.key, a.dataset.title); break;
+        case "apple-connect": appleConnect(a.dataset.kind); break;
+        case "apple-sync": appleSync(true); toast("Aggiorno da Calendario e Promemoria…"); break;
+        case "apple-disconnect": {
+          const kind = a.dataset.kind;
+          if (!confirm("Scollegare " + (kind === "calendar" ? "Apple Calendar" : "Apple Promemoria") + "? Tolgo solo le copie da Daily Schedule: in Apple non cambia nulla.")) break;
+          commit((s) => { G.apple.forget(s, kind); s.integrations = Object.assign({}, s.integrations, { [kind]: "off" }); }, "Scollegato");
+          break;
+        }
         case "unhide": {
           const k = a.dataset.key;
           const title = state.hidden[k] && state.hidden[k].title;
@@ -1918,6 +2011,12 @@
   }
   tick();
   setInterval(tick, 30000);
+  // Daily Schedule per Mac: stato dei permessi, aggiornamento all'avvio, ogni 5 minuti e quando cambia qualcosa in Apple
+  if (G.apple.available()) {
+    appleRefreshStatus().then(() => { render(); appleSync(true); });
+    window.addEventListener("apple-changed", () => appleSync(true));
+    setInterval(() => appleSync(false), 60000);
+  }
   setInterval(() => {
     const el = document.getElementById && document.getElementById("focus-timer");
     if (!el || !el.dataset.start) return;

@@ -251,7 +251,7 @@
     if (conflicts.length) return fail("Mi fermo: " + conflicts.join("; ") + ". Controlla e chiedimi una nuova proposta.");
     const apple = p.ops.filter(touchesApple);
     if (apple.length && ctx.mode !== "demo" && !ctx.appleBridge) {
-      return fail("Il collegamento con il Mac (Apple Calendar/Promemoria) non è attivo: nessuna modifica eseguita.");
+      return fail("Per ora Daily Schedule legge soltanto Calendario e Promemoria: questa modifica va fatta dall'app Apple. Nessuna modifica eseguita.");
     }
     const next = clone(state);
     applyOps(next, p.ops, now);

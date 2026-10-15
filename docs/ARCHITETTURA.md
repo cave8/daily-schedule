@@ -14,7 +14,7 @@
 | App web (Mac + iPhone) | PWA in JavaScript semplice, senza build | Funziona già, si testa senza installare nulla, nessuna dipendenza da aggiornare. Next.js + TypeScript aggiungerebbero Node, npm e una fase di build senza un beneficio concreto oggi. Si potrà migrare se il codice crescerà molto. |
 | Backend + database + login | **Supabase**, piano gratuito (Postgres con regole RLS per utente, Auth) | Gratuito per uso personale, già usato per Dibs, HTTPS incluso, nessun server da gestire. |
 | Assistente | Interprete locale in italiano (`js/assistant.js`), nessuna IA a pagamento | Scelta dell'utente (15/10/2026): niente servizi a pagamento. Gratis, privato (nessun dato inviato), prevedibile. Produce **solo proposte** e non può scrivere i dati. |
-| Apple Calendar e Promemoria | App macOS in **Swift/SwiftUI + EventKit** (barra dei menu) | Il browser non può leggere i dati Apple. Il companion si collega **in uscita** a Supabase: nessuna porta aperta sul Mac. |
+| Apple Calendar e Promemoria | **Daily Schedule per Mac** (`mac/`): app nativa Swift + EventKit che mostra l'app web in una finestra e le passa i dati Apple tramite un ponte interno (WKWebView) | Il browser non può leggere i dati Apple. Il ponte risponde solo alla nostra pagina, non apre porte di rete, e in questa versione è in **sola lettura**. Con la sincronizzazione (fase 7) i dati arriveranno anche all'iPhone. |
 | iPhone | La stessa PWA | Vede gli eventi Apple tramite l'istantanea che il Mac carica su Supabase. Calendario e Promemoria si sincronizzano già tra i dispositivi via iCloud. |
 
 Semplificazione rispetto alla proposta iniziale: niente server "nostro" separato.
@@ -71,3 +71,11 @@ sono finti e non toccano i dati reali.
 
 ## Costi
 Nessuno. Niente API a pagamento. Servizi previsti, tutti con piano gratuito: GitHub (codice), Netlify (pubblicazione), Supabase (sincronizzazione, fase 7).
+
+## Daily Schedule per Mac (fase 5)
+- Codice: `mac/Sources/main.swift`; si costruisce con `mac/build.sh` (solo strumenti già presenti nel Mac, nessun Xcode) e si installa in `~/Applications`.
+- Il ponte (`window.webkit.messageHandlers.apple`) offre solo: `status`, `requestAccess`, `fetch`. Ogni altra richiesta viene rifiutata.
+- Il ponte risponde solo a pagine di `daily-schedules.netlify.app` (o `localhost` per le prove).
+- La pagina (`js/apple.js`) fonde i dati: gli identificativi Apple sono stabili (`ac:` eventi, `ar:` promemoria), quindi niente doppioni; area, durata stimata, passi e spostamenti aggiunti in Daily Schedule restano.
+- Quando cambia qualcosa in Calendario o Promemoria, macOS lo segnala e il programma si aggiorna da solo.
+- Autoverifica senza finestra: `DS_URL=http://localhost:8080/ "~/Applications/Daily Schedule.app/Contents/MacOS/DailySchedule" --selftest`.

@@ -15,6 +15,13 @@ Nel Terminale:
 poi apri http://localhost:8080 nel browser (Safari o Chrome).
 Per provare con un orario finto: http://localhost:8080/?now=2026-10-15T09:00
 
+## App per Mac (Apple Calendar e Promemoria)
+
+    ~/daily-schedule/mac/build.sh
+
+Installa «Daily Schedule» in ~/Applications. Aprila, vai in Impostazioni → Collegamenti Apple → Collega.
+In questa versione legge soltanto: non modifica nulla in Calendario e Promemoria.
+
 ## Test automatici (nessuna installazione necessaria)
 
     ~/daily-schedule/tests/run.sh
@@ -35,15 +42,16 @@ Per provare con un orario finto: http://localhost:8080/?now=2026-10-15T09:00
 | `js/routines.js` | routine «Ogni giorno»: suggerimenti e creazione automatica delle attività quotidiane |
 | `js/areas.js` | aree della vita (colori, riconoscimento dal titolo) |
 | `js/stats.js` | resoconto settimanale e serie delle routine |
+| `js/apple.js` | dati di Apple Calendar e Promemoria ricevuti dall'app per Mac |
+| `mac/` | app per Mac (Swift + EventKit) |
 | `js/demo.js` | dati dimostrativi |
 | `js/app.js` | interfaccia: Oggi, Assistente, Calendario, Attività, Impostazioni |
 | `sw.js`, `manifest.webmanifest` | installazione come app e uso offline |
 
-## Cosa è reale e cosa è simulato (versione 0.6)
+## Cosa è reale e cosa è simulato (versione 0.7)
 - **Reale:** attività e appuntamenti interni, routine quotidiane, oscuramento di eventi/promemoria, pianificazione, riorganizzazione,
   assistente locale, proposte e conferme, salvataggio sul dispositivo.
-- **Simulato (solo demo):** gli elementi "Apple Calendar" e "Apple Promemoria".
-  Il collegamento vero richiede l'app per Mac (fase 5).
+- **Apple Calendar e Promemoria:** lettura reale tramite l'app per Mac; nella demo sono finti.
 - **Non ancora presente:** sincronizzazione Mac ↔ iPhone, notifiche ad app chiusa.
 - **Costi:** nessuno. Niente API a pagamento.
 

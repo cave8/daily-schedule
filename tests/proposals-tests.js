@@ -61,7 +61,7 @@
   op = PR.op(st, "update_event", { targetId: "d-e1", after: { location: "Sala C" } });
   p = PR.create(st, [op], {}, NOW);
   r = PR.apply(p, st, { proposalId: p.id, fingerprint: p.fingerprint }, NOW, { mode: "real", appleBridge: null });
-  ok(!r.ok && /Mac/.test(r.error), "senza companion Mac nessuna modifica ai dati Apple");
+  ok(!r.ok && /legge soltanto/.test(r.error), "versione reale: nessuna modifica ai dati Apple");
   r = PR.apply(p, st, { proposalId: p.id, fingerprint: p.fingerprint }, NOW, { mode: "demo" });
   ok(r.ok && r.simulatedApple, "in demo la modifica Apple è simulata e dichiarata tale");
 
@@ -138,6 +138,55 @@
     const res = PR.apply(pp, st, { proposalId: pp.id, fingerprint: pp.fingerprint }, NOW, { mode: "demo" });
     ok(res.ok, "applicabile con conferma: " + m, res.error);
   }
+
+  // ---------- dati Apple dall'app per Mac (sola lettura) ----------
+  const AP = G.apple;
+  let real = G.store.empty();
+  real.settings = S.defaultSettings();
+  const data1 = {
+    events: [
+      { id: "E1@2026-10-15T10:00", externalId: "E1", title: "Riunione", start: "2026-10-15T10:00", end: "2026-10-15T11:00", allDay: false, calendar: "Lavoro", externalModified: "2026-10-14T09:00" },
+      { id: "E2@2026-10-16", externalId: "E2", title: "Ferie", start: "2026-10-16", end: "2026-10-17", allDay: true },
+      { id: "E3@2026-10-15T12:00", externalId: "E3", title: "Disponibile", start: "2026-10-15T12:00", end: "2026-10-15T13:00", allDay: false, free: true },
+    ],
+    reminders: [
+      { id: "R1", title: "Chiamare il dentista", due: "2026-10-16", priority: 1, list: "Personale" },
+      { id: "R2", title: "Comprare il latte", priority: 0 },
+    ],
+  };
+  let sum = AP.merge(real, data1, NOW);
+  ok(sum.events === 2 && real.events.length === 2 && real.events.every((e) => e.source === "apple-calendar"), "Apple: eventi importati (gli eventi «liberi» no)");
+  const rem1 = real.tasks.find((t) => t.id === "ar:R1");
+  ok(rem1 && rem1.source === "apple-reminders" && rem1.deadline === "2026-10-16" && rem1.priority === 1 && rem1.duration === 15, "Apple: promemoria con scadenza, priorità e durata stimata");
+  ok(real.tasks.find((t) => t.id === "ar:R2").deadline === null, "Apple: promemoria senza scadenza resta senza scadenza");
+  ok(!real.tasks.some((t) => t.source === "apple-reminders" && t.pinnedStart), "Apple: un promemoria non diventa un appuntamento");
+  // le mie aggiunte restano dopo un nuovo aggiornamento, niente doppioni
+  rem1.area = "personale"; rem1.duration = 20; rem1.remaining = 20; rem1.subtasks = [{ id: "x", text: "Trovare il numero", done: false }];
+  real.events.find((e) => e.id === "ac:E1@2026-10-15T10:00").travel = 0;
+  const data2 = JSON.parse(JSON.stringify(data1));
+  data2.events[0].title = "Riunione (spostata)"; data2.events[0].start = "2026-10-15T11:00"; data2.events[0].end = "2026-10-15T12:00"; data2.events[0].id = "E1@2026-10-15T11:00";
+  data2.reminders[0].title = "Chiamare il dentista!";
+  AP.merge(real, data2, NOW);
+  const rem1b = real.tasks.find((t) => t.id === "ar:R1");
+  ok(real.tasks.filter((t) => t.source === "apple-reminders").length === 2, "Apple: nessun doppione dopo l'aggiornamento");
+  ok(rem1b.title === "Chiamare il dentista!" && rem1b.area === "personale" && rem1b.duration === 20 && rem1b.subtasks.length === 1, "Apple: titolo aggiornato, le mie aggiunte restano");
+  ok(real.events.length === 2 && real.events.some((e) => e.title === "Riunione (spostata)" && e.start === "2026-10-15T11:00"), "Apple: modifiche fatte nell'app Calendario recepite");
+  // completato in Promemoria / eliminato
+  AP.merge(real, { events: data2.events, reminders: [Object.assign({}, data2.reminders[0], { completed: true, completedAt: "2026-10-15T08:00" })] }, NOW);
+  ok(real.tasks.find((t) => t.id === "ar:R1").done && !real.tasks.some((t) => t.id === "ar:R2"), "Apple: completato → fatto; eliminato → tolto");
+  // pianificazione con eventi Apple, ed eventi oscurati
+  real.plan = null;
+  let pl = S.plan(real, NOW);
+  ok(pl.blocks.some((b) => b.title === "Riunione (spostata)" && b.source === "apple-calendar"), "Apple: eventi nel programma");
+  real.hidden["e:ac:E1@2026-10-15T11:00"] = { at: NOW };
+  ok(!S.plan(real, NOW).blocks.some((b) => b.title === "Riunione (spostata)"), "Apple: evento oscurato ignorato, non cancellato");
+  ok(real.events.some((e) => e.title === "Riunione (spostata)"), "Apple: l'evento oscurato esiste ancora");
+  AP.forget(real, "calendar");
+  ok(!real.events.some((e) => e.source === "apple-calendar"), "Apple: scollegare toglie solo le copie locali");
+  // l'assistente nella versione reale non crea promemoria Apple
+  real.integrations = { calendar: "connected", reminders: "connected" };
+  const ra = A.respond("Aggiungi un promemoria per pagare la bolletta venerdì", real, NOW);
+  ok(ra.ops && ra.ops[0].after.source !== "apple-reminders" && /prossimo aggiornamento/.test(ra.text), "Apple: versione reale, promemoria creato come attività interna");
 
   print("");
   failures.forEach((f) => print("  ✗ " + f));

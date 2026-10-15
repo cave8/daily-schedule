@@ -474,7 +474,8 @@
     const dayInMsg = text.match(DAY_RE);
     const clauses = splitClauses(text);
     const ops = [], lines = [], estimates = [];
-    const remindersOn = state.integrations && state.integrations.reminders && state.integrations.reminders !== "off";
+    // Creare promemoria Apple: per ora solo nella demo (nella versione reale la lettura è attiva, la scrittura arriverà)
+    const remindersOn = !!(state.integrations && state.integrations.reminders === "demo");
     for (let c of clauses) {
       c = c.replace(LEAD, "").replace(/^(un|una|uno|il|la|lo)\s+(?=riunione|appuntamento|incontro|call|lezione|visita|cena|pranzo)/i, "");
       if (!c || c.length < 2) continue;
@@ -528,7 +529,7 @@
       return { text: "Non sono sicuro di aver capito. Vuoi aggiungere un'attività o un appuntamento? Prova ad esempio: «Dentista venerdì alle 15» o «Studiare 2 ore domani mattina».", suggestions: ["Aiuto"] };
     }
     const reminderNote = isReminder ? (remindersOn ? "\nLo creerò come promemoria in Apple Promemoria" + (state.integrations.reminders === "demo" ? " (demo)" : "") + ", solo dopo la tua conferma. Non lo trasformo in un appuntamento: l'orario nel programma è solo un suggerimento."
-      : "\nApple Promemoria non è collegato: lo aggiungo come attività di Daily Schedule.") : "";
+      : "\nLo aggiungo come attività di Daily Schedule" + (state.integrations && state.integrations.reminders === "connected" ? " (creare promemoria Apple da qui arriverà in un prossimo aggiornamento)." : ": Apple Promemoria non è collegato.")) : "";
     return {
       text: "Ecco cosa ho capito:\n" + lines.join("\n") +
         (estimates.length ? "\nDurate stimate da me (puoi cambiarle): " + estimates.join(", ") + "." : "") + reminderNote +

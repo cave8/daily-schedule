@@ -36,7 +36,10 @@ Legenda: ✅ fatto · 🟡 in parte · ⬜ da fare
 - ❌ IA a pagamento (Claude API): esclusa per scelta, niente costi
 
 ## Fase 5 — App nativa Mac (lettura)
-- ⬜ App SwiftUI nella barra dei menu, permessi EventKit, lettura di eventi e promemoria
+- ✅ App nativa per Mac (Swift + EventKit) con l'app web dentro, permessi chiesti solo su richiesta
+- ✅ Lettura di eventi (anche ricorrenti e di tutto il giorno) e promemoria (con e senza scadenza)
+- ✅ Aggiornamento automatico quando cambiano Calendario o Promemoria; niente doppioni; le aggiunte locali restano
+- ✅ Protezioni: nessuna scrittura sui dati Apple in questa versione
 
 ## Fase 6 — Modifiche controllate ai dati Apple
 - 🟡 Livello proposte/conferme pronto e testato (sulla demo)
