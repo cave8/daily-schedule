@@ -237,6 +237,8 @@
     if (b.kind === "task" && b.priority === 1) s += '<span class="tag high">alta</span>';
     if (b.pinned) s += '<span class="tag pin">orario fisso</span>';
     if (b.routine) s += '<span class="tag rt">' + I.repeat + "ogni giorno</span>";
+    const tk = b.kind === "task" ? taskById(b.taskId) : null;
+    if (tk && tk.recurrence) s += '<span class="tag rt">' + I.repeat + ({ daily: "ogni giorno", weekly: "ogni settimana", monthly: "ogni mese", yearly: "ogni anno" }[tk.recurrence.frequency] || "si ripete") + "</span>";
     s += srcTag(b.source);
     return s;
   }
@@ -659,14 +661,16 @@
 
 
   // ---------------- Apple (tramite l'app per Mac, sola lettura) ----------------
-  let appleBusy = false;
+  let appleBusy = false, applePending = false;
   function appleRefreshStatus() {
     if (!G.apple.available()) return Promise.resolve(null);
     return G.apple.call("status").then((st) => { ui.appleStatus = st; return st; }).catch(() => null);
   }
 
   function appleSync(force) {
-    if (mode !== "real" || !G.apple.available() || appleBusy) return;
+    if (mode !== "real" || !G.apple.available()) return;
+    // se un aggiornamento è già in corso, il nuovo parte subito dopo (non viene perso)
+    if (appleBusy) { if (force) applePending = true; return; }
     const integ = state.integrations || {};
     const cal = integ.calendar === "connected", rem = integ.reminders === "connected";
     if (!cal && !rem) return;
@@ -681,8 +685,10 @@
       const sum = G.apple.merge(state, data, now(), { calendar: okCal, reminders: okRem });
       state.appleSync = { at: now(), events: okCal ? sum.events : null, reminders: okRem ? sum.reminders : null, error: null };
       cleanCheckins(); replan(); save(); render();
+      if (applePending) { applePending = false; appleSync(true); }
     }).catch((err) => {
       appleBusy = false;
+      if (applePending) { applePending = false; setTimeout(() => appleSync(true), 500); }
       state.appleSync = Object.assign({}, state.appleSync, { error: String(err && err.message || err) });
       save(); render();
     });

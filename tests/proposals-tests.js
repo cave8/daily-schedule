@@ -188,6 +188,14 @@
   const ra = A.respond("Aggiungi un promemoria per pagare la bolletta venerdì", real, NOW);
   ok(ra.ops && ra.ops[0].after.source !== "apple-reminders" && /prossimo aggiornamento/.test(ra.text), "Apple: versione reale, promemoria creato come attività interna");
 
+  // promemoria con orario e ripetizione
+  real = G.store.empty(); real.settings = S.defaultSettings();
+  AP.merge(real, { events: [], reminders: [{ id: "R9", title: "Integratori", due: "2026-10-15T10:00", hasTime: true, priority: 0, recurrence: { frequency: "daily", interval: 1 } }] }, NOW);
+  const r9 = real.tasks.find((t) => t.id === "ar:R9");
+  ok(r9.pinnedStart === "2026-10-15T10:00" && r9.deadline === "2026-10-15" && r9.recurrence.frequency === "daily", "Apple: promemoria alle 10 → nel programma alle 10, si ripete");
+  pl = S.plan(real, NOW);
+  ok(pl.blocks.some((b) => b.taskId === "ar:R9" && T.fmtHM(b.start) === "10:00" && !b.late), "Apple: promemoria delle 10 compare alle 10:00");
+
   print("");
   failures.forEach((f) => print("  ✗ " + f));
   print("Proposte e assistente: " + pass + " test superati, " + fail + " falliti");

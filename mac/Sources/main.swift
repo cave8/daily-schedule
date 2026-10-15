@@ -112,6 +112,18 @@ final class AppleData {
         ]
         if let dc = r.dueDateComponents, let d = Calendar.current.date(from: dc) {
             item["due"] = (dc.hour != nil) ? iso.string(from: d) : day.string(from: d)
+            item["hasTime"] = dc.hour != nil
+        }
+        if let rule = r.recurrenceRules?.first {
+            let freq: String
+            switch rule.frequency {
+            case .daily: freq = "daily"
+            case .weekly: freq = "weekly"
+            case .monthly: freq = "monthly"
+            case .yearly: freq = "yearly"
+            @unknown default: freq = "other"
+            }
+            item["recurrence"] = ["frequency": freq, "interval": rule.interval]
         }
         if let n = r.notes, !n.isEmpty { item["notes"] = String(n.prefix(1000)) }
         if let m = r.lastModifiedDate { item["externalModified"] = iso.string(from: m) }
@@ -315,6 +327,27 @@ final class SelfTest: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         print("SELFTEST FAIL load \(error.localizedDescription)"); exit(1)
     }
+}
+
+// Diagnosi: scrive in un file i promemoria che si ripetono (solo lettura)
+if let i = CommandLine.arguments.firstIndex(of: "--diag-reminders"), i + 1 < CommandLine.arguments.count {
+    let path = CommandLine.arguments[i + 1]
+    let store = EKEventStore()
+    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"
+    var lines = ["stato=\(AppleData.statusName(EKEventStore.authorizationStatus(for: .reminder)))"]
+    let pred = store.predicateForReminders(in: nil)
+    store.fetchReminders(matching: pred) { list in
+        let all = list ?? []
+        lines.append("totale=\(all.count) aperti=\(all.filter { !$0.isCompleted }.count)")
+        for r in all where r.hasRecurrenceRules {
+            let dc = r.dueDateComponents
+            let due = dc.flatMap { Calendar.current.date(from: $0) }.map { f.string(from: $0) } ?? "nessuna"
+            lines.append("RIPETUTO | \(r.title ?? "") | scadenza=\(due) | conOra=\(dc?.hour != nil) | completato=\(r.isCompleted) | regola=\(r.recurrenceRules?.first?.description ?? "")")
+        }
+        try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        exit(0)
+    }
+    RunLoop.main.run()
 }
 
 if CommandLine.arguments.contains("--selftest") {

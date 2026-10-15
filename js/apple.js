@@ -60,8 +60,12 @@
         const id = "ar:" + r.id;
         seen.add(id);
         let t = state.tasks.find((x) => x.id === id);
-        const appleFields = { title: r.title, deadline: r.due || null, notes: r.notes || "", list: r.list || "",
-          externalId: r.id, externalModified: r.externalModified || null };
+        // Promemoria con un orario (es. ogni giorno alle 10): compare a quell'ora nel programma.
+        // Senza orario: solo la scadenza del giorno, e l'orario lo suggerisce Daily Schedule.
+        const timed = !!(r.due && T.hasTime(r.due));
+        const appleFields = { title: r.title, deadline: r.due ? (timed ? r.due.split("T")[0] : r.due) : null,
+          pinnedStart: timed ? r.due : null, notes: r.notes || "", list: r.list || "",
+          recurrence: r.recurrence || null, externalId: r.id, externalModified: r.externalModified || null };
         if (r.completed) {
           if (t && !t.done) { t.done = true; t.doneAt = r.completedAt || T.toISO(now); summary.completed++; }
           if (t) Object.assign(t, appleFields);
