@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.9.2";
+  const APP_VERSION = "0.9.3";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -72,6 +72,8 @@
       '<button type="button" data-act="set-area" data-v="" class="' + (!cur ? "on" : "") + '">Nessuna</button>' +
       G.areas.AREAS.map((a) => '<button type="button" data-act="set-area" data-v="' + a.id + '" class="' + (cur === a.id ? "on" : "") + '"' + areaStyle(a.id) + "><i></i>" + a.label + "</button>").join("") + "</div></div>";
   }
+  const fRow = (label, control) => '<label class="f-row"><span>' + label + "</span>" + control + "</label>";
+  const fGroup = (rows) => '<div class="f-group">' + rows.filter(Boolean).join("") + "</div>";
   const subProgress = (t) => (t && t.subtasks && t.subtasks.length ? t.subtasks.filter((x) => x.done).length + "/" + t.subtasks.length + " passi" : "");
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -1042,8 +1044,10 @@
       '<div class="field"><label for="rf-title">Cosa fai ogni giorno</label><input type="text" id="rf-title" name="title" required maxlength="120" value="' + esc(r.title || "") + '"></div>' +
       '<div class="field"><label>Durata (minuti)</label><input type="number" inputmode="numeric" name="duration" min="5" max="480" step="5" value="' + (r.duration || 30) + '"><div class="chips">' + durChips + "</div></div>" +
       areaPicker(r.area) +
-      '<div class="row2"><div class="field"><label>Momento</label><select name="pref">' + Object.keys(PREF_LBL).map((k) => '<option value="' + k + '"' + ((r.pref || "") === k ? " selected" : "") + ">" + PREF_LBL[k] + "</option>").join("") + "</select></div>" +
-      '<div class="field"><label>Orario fisso (facoltativo)</label><input type="time" name="time" value="' + esc(r.time || "") + '"></div></div>' +
+      fGroup([
+        fRow("Momento", '<select name="pref">' + Object.keys(PREF_LBL).map((k) => '<option value="' + k + '"' + ((r.pref || "") === k ? " selected" : "") + ">" + PREF_LBL[k] + "</option>").join("") + "</select>"),
+        fRow("Orario fisso", '<input type="time" name="time" value="' + esc(r.time || "") + '">'),
+      ]) +
       '<div class="field"><span class="lbl">Giorni</span><input type="hidden" name="days" value="' + days.join(",") + '"><div class="chips daypick">' +
       G.routines.ALL_DAYS.map((d) => '<button type="button" data-act="toggle-day" data-d="' + d + '" class="' + (days.includes(d) ? "on" : "") + '">' + T.GIORNI_BREVI[d] + "</button>").join("") + "</div></div>" +
       '<div class="sheet-actions"><button class="btn primary" type="submit">Salva</button><span class="spacer"></span>' +
@@ -1597,26 +1601,33 @@
       (info.reasons && info.reasons.length ? ". Perché: " + esc(info.reasons.join(", ")) : "") + "</div>";
     else if (info && info.unscheduled) planned = '<div class="note">Non trova posto: prova a togliere la scadenza, renderla divisibile o liberare tempo.</div>';
     const heading = formMode === "proposal" ? "Modifica la proposta" : isNew ? "Nuova attività" : apple ? "Promemoria Apple" : "Attività";
-    openModal('<form id="task-form" data-id="' + esc(x.id || "") + '" data-mode="' + formMode + '"' + (ctx ? ' data-pid="' + esc(ctx.pid) + '" data-i="' + ctx.i + '"' : "") + "><h2>" + heading + srcTag(x.source) + "</h2>" + planned +
+    openModal('<form id="task-form" class="nice-form" data-id="' + esc(x.id || "") + '" data-mode="' + formMode + '"' + (ctx ? ' data-pid="' + esc(ctx.pid) + '" data-i="' + ctx.i + '"' : "") + ">" +
+      '<div class="sheet-head"><h2>' + heading + srcTag(x.source) + '</h2><button class="iconbtn" type="button" data-act="close" aria-label="Chiudi">' + I.x + "</button></div>" + planned +
       (apple && formMode === "edit" ? '<div class="note">Elemento di Apple Promemoria' + (mode === "demo" ? " (demo)" : "") + ': salvando creo una <b>proposta</b> da confermare. Durata e momento preferito restano solo in Daily Schedule.</div>' : "") +
       (formMode === "proposal" ? '<div class="note">Stai modificando una proposta: dopo il salvataggio servirà una nuova conferma.</div>' : "") +
-      '<div class="field"><label for="f-title">Cosa devi fare</label><input type="text" id="f-title" name="title" required maxlength="200" value="' + esc(x.title || "") + '"></div>' +
-      '<div class="field"><label for="f-dur">' + (isNew ? "Quanto tempo serve (minuti, stima)" : "Quanto tempo serve ancora (minuti, stima)") + '</label><input type="number" inputmode="numeric" id="f-dur" name="duration" min="5" max="1440" step="5" value="' + rem + '"><div class="chips">' + durChips + "</div></div>" +
-      '<div class="field"><span class="lbl">Priorità</span><input type="hidden" name="priority" value="' + (x.priority || 2) + '"><div class="chips">' + prio + "</div></div>" +
-      '<div class="field"><span class="lbl">Scadenza (facoltativa)</span><div class="row2"><input type="date" name="dlDate" value="' + dlDate + '" aria-label="Giorno di scadenza"><input type="time" name="dlTime" value="' + dlTime + '" aria-label="Ora di scadenza"></div><p class="hint">Senza ora vale fino a fine giornata. È diversa dall\'orario in cui la farai.</p></div>' +
+      '<input class="big-title" type="text" id="f-title" name="title" required maxlength="200" placeholder="Cosa devi fare" value="' + esc(x.title || "") + '">' +
+      fGroup([fRow(isNew ? "Durata (minuti)" : "Tempo che manca (min)", '<input type="number" inputmode="numeric" id="f-dur" name="duration" min="5" max="1440" step="5" value="' + rem + '">')]) +
+      '<div class="chips tight">' + durChips + "</div>" +
+      '<div class="field"><span class="lbl">Priorità</span><input type="hidden" name="priority" value="' + (x.priority || 2) + '"><div class="chips tight">' + prio + "</div></div>" +
+      '<div class="field"><span class="lbl">Scadenza (facoltativa)</span>' + fGroup([
+        fRow("Giorno", '<input type="date" name="dlDate" value="' + dlDate + '">'),
+        fRow("Entro le", '<input type="time" name="dlTime" value="' + dlTime + '">'),
+      ]) + '<p class="hint">Senza ora vale fino a fine giornata.</p></div>' +
       areaPicker(x.area) + subtasksEditor(x.subtasks) +
-      '<details class="more"' + (x.notBefore || x.pref || x.pinnedStart || x.splittable === false || x.notes ? " open" : "") + "><summary>Altre opzioni ›</summary>" +
-      '<div class="field"><label>Momento preferito</label><select name="pref">' + Object.keys(PREF_LBL).map((k) => '<option value="' + k + '"' + ((x.pref || "") === k ? " selected" : "") + ">" + PREF_LBL[k] + "</option>").join("") + "</select></div>" +
-      '<div class="field"><label>Non prima del</label><input type="date" name="notBefore" value="' + esc(x.notBefore ? x.notBefore.split("T")[0] : "") + '"></div>' +
-      '<div class="field"><label>Orario fisso (se deve essere proprio a quell\'ora)</label><input type="datetime-local" name="pinnedStart" value="' + esc(x.pinnedStart || "") + '"></div>' +
-      '<div class="field"><label class="toggle" style="justify-content:space-between"><span>Si può dividere in più momenti</span><input type="checkbox" class="switch" name="splittable"' + (x.splittable === false ? "" : " checked") + "></label></div>" +
-      '<div class="field"><label>Note</label><textarea name="notes">' + esc(x.notes || "") + "</textarea></div></details>" +
-      '<div class="sheet-actions"><button class="btn primary" type="submit">' + (formMode === "proposal" ? "Aggiorna proposta" : apple && formMode === "edit" ? "Proponi modifica" : "Salva") + "</button>" +
-      (formMode === "edit" ? '<button class="btn ok" type="button" data-act="done" data-id="' + esc(x.id) + '">' + I.check + "Fatta</button>" : "") +
-      (formMode === "edit" && x.source === "apple-reminders" ? '<button class="btn" type="button" data-act="hide" data-key="t:' + esc(x.id) + "@" + T.dateKey(now()) + '" data-title="' + esc(x.title) + '">' + I.eyeOff + "Oscura per oggi</button>" : "") +
-      '<span class="spacer"></span>' +
-      (formMode === "edit" && !apple ? '<button class="btn danger" type="button" data-act="delete-task" data-id="' + esc(x.id) + '">Elimina</button>' : "") +
-      '<button class="btn ghost" type="button" data-act="close">Chiudi</button></div></form>');
+      '<details class="more"' + (x.notBefore || x.pref || x.pinnedStart || x.splittable === false || x.notes ? " open" : "") + "><summary>Altre opzioni</summary>" +
+      fGroup([
+        fRow("Momento preferito", '<select name="pref">' + Object.keys(PREF_LBL).map((k) => '<option value="' + k + '"' + ((x.pref || "") === k ? " selected" : "") + ">" + PREF_LBL[k] + "</option>").join("") + "</select>"),
+        fRow("Non prima del", '<input type="date" name="notBefore" value="' + esc(x.notBefore ? x.notBefore.split("T")[0] : "") + '">'),
+        fRow("Orario fisso", '<input type="datetime-local" name="pinnedStart" value="' + esc(x.pinnedStart || "") + '">'),
+        fRow("Divisibile in più momenti", '<input type="checkbox" class="switch" name="splittable"' + (x.splittable === false ? "" : " checked") + ">"),
+      ]) +
+      '<textarea class="notes" name="notes" placeholder="Note">' + esc(x.notes || "") + "</textarea></details>" +
+      '<button class="btn primary block save" type="submit">' + (formMode === "proposal" ? "Aggiorna proposta" : apple && formMode === "edit" && mode === "demo" ? "Proponi modifica" : "Salva") + "</button>" +
+      '<div class="sheet-secondary">' +
+      (formMode === "edit" ? '<button class="btn small ok" type="button" data-act="done" data-id="' + esc(x.id) + '">' + I.check + "Fatta</button>" : "") +
+      (formMode === "edit" && x.source === "apple-reminders" ? '<button class="btn small" type="button" data-act="hide" data-key="t:' + esc(x.id) + "@" + T.dateKey(now()) + '" data-title="' + esc(x.title) + '">' + I.eyeOff + "Oscura per oggi</button>" : "") +
+      (formMode === "edit" && !apple ? '<button class="btn small danger" type="button" data-act="delete-task" data-id="' + esc(x.id) + '">Elimina</button>' : "") +
+      "</div></form>");
   }
 
   function eventForm(ev, formMode, occDate, ctx) {
@@ -1624,28 +1635,39 @@
     const apple = isApple(ev.source);
     const s = T.fromISO(ev.start), e = T.fromISO(ev.end);
     const recurring = ev.repeat && ev.repeat !== "none";
+    const durMin = Math.round((e - s) / MIN);
     const heading = formMode === "proposal" ? "Modifica la proposta" : isNew ? "Nuovo appuntamento" : apple ? "Evento Apple Calendar" : "Appuntamento";
-    openModal('<form id="event-form" data-id="' + esc(ev.id || "") + '" data-occ="' + esc(occDate || "") + '" data-mode="' + formMode + '"' + (ctx ? ' data-pid="' + esc(ctx.pid) + '" data-i="' + ctx.i + '"' : "") + "><h2>" + heading + srcTag(ev.source) + "</h2>" +
-      (apple && formMode === "edit" ? '<div class="note">Evento di Apple Calendar' + (mode === "demo" ? " (demo)" : "") + (ev.calendar ? " · calendario «" + esc(ev.calendar) + "»" : "") + ': salvando creo una <b>proposta</b> da confermare. Gli eventi Apple non si eliminano da qui.</div>' : "") +
+    const durChips = [15, 30, 45, 60, 90, 120].map((d) =>
+      '<button type="button" data-act="ev-dur" data-min="' + d + '" class="' + (d === durMin ? "on" : "") + '">' + T.fmtDurShort(d) + "</button>").join("");
+    const showMore = !!(recurring || ev.location || ev.notes || (ev.travel != null && ev.travel !== ""));
+    const secondary = [
+      formMode === "edit" && (apple || recurring) && (occDate || !recurring) ? '<button class="btn small" type="button" data-act="hide" data-key="e:' + esc(recurring ? ev.id + "@" + occDate : ev.id) + '" data-title="' + esc(ev.title) + '">' + I.eyeOff + "Oscura" + (recurring ? " questo giorno" : "") + "</button>" : "",
+      formMode === "edit" && !apple && recurring && occDate ? '<button class="btn small danger" type="button" data-act="delete-occ" data-id="' + esc(ev.id) + '" data-occ="' + esc(occDate) + '">Elimina solo questa volta</button>' : "",
+      formMode === "edit" && !apple ? '<button class="btn small danger" type="button" data-act="delete-event" data-id="' + esc(ev.id) + '">' + (recurring ? "Elimina la serie" : "Elimina") + "</button>" : "",
+    ].filter(Boolean).join("");
+    openModal('<form id="event-form" class="nice-form" data-id="' + esc(ev.id || "") + '" data-occ="' + esc(occDate || "") + '" data-mode="' + formMode + '"' + (ctx ? ' data-pid="' + esc(ctx.pid) + '" data-i="' + ctx.i + '"' : "") + ">" +
+      '<div class="sheet-head"><h2>' + heading + srcTag(ev.source) + '</h2><button class="iconbtn" type="button" data-act="close" aria-label="Chiudi">' + I.x + "</button></div>" +
+      (apple && formMode === "edit" ? '<div class="note">Evento di Apple Calendar' + (mode === "demo" ? " (demo)" : "") + (ev.calendar ? " · «" + esc(ev.calendar) + "»" : "") + ". Titolo e orari si cambiano dall'app Calendario.</div>" : "") +
       (formMode === "proposal" ? '<div class="note">Stai modificando una proposta: dopo il salvataggio servirà una nuova conferma.</div>' : "") +
       (recurring && formMode === "edit" ? '<p class="hint">Si ripete: le modifiche valgono per tutta la serie.</p>' : "") +
-      '<div class="field"><label for="e-title">Titolo</label><input type="text" id="e-title" name="title" required maxlength="200" value="' + esc(ev.title || "") + '"></div>' +
-      (ev.allDay ? '<p class="hint">Evento di tutta la giornata: ' + T.fmtDay(s, now()) + "</p>" :
-        '<div class="row3"><div class="field"><label>Giorno</label><input type="date" name="date" required value="' + T.dateKey(s) + '"></div>' +
-        '<div class="field"><label>Dalle</label><input type="time" name="start" required value="' + T.fmtHM(s) + '"></div>' +
-        '<div class="field"><label>Alle</label><input type="time" name="end" required value="' + T.fmtHM(e) + '"></div></div>') +
-      (apple ? "" : '<div class="row2"><div class="field"><label>Si ripete</label><select name="repeat">' + Object.keys(REPEAT_LBL).map((k) => '<option value="' + k + '"' + ((ev.repeat || "none") === k ? " selected" : "") + ">" + REPEAT_LBL[k] + "</option>").join("") + "</select></div>" +
-        '<div class="field"><label>Fino al (facoltativo)</label><input type="date" name="until" value="' + esc(ev.until || "") + '"></div></div>') +
-      '<div class="row2"><div class="field"><label>Luogo</label><input type="text" name="location" value="' + esc(ev.location || "") + '"></div>' +
-      '<div class="field"><label>Minuti per arrivarci</label><input type="number" inputmode="numeric" name="travel" min="0" max="240" step="5" value="' + (ev.travel != null && ev.travel !== "" ? esc(ev.travel) : "") + '" placeholder="auto (' + (state.settings.defaultTravel || 0) + ' se c\'è un luogo)"></div></div>' +
+      '<input class="big-title" type="text" id="e-title" name="title" required maxlength="200" placeholder="Titolo (es. Dentista)" value="' + esc(ev.title || "") + '">' +
+      (ev.allDay ? '<p class="hint">Tutto il giorno · ' + T.fmtDay(s, now()) + "</p>" :
+        fGroup([
+          fRow("Giorno", '<input type="date" name="date" required value="' + T.dateKey(s) + '">'),
+          fRow("Inizio", '<input type="time" name="start" required value="' + T.fmtHM(s) + '">'),
+          fRow("Fine", '<input type="time" name="end" required value="' + T.fmtHM(e) + '">'),
+        ]) + '<div class="chips tight">' + durChips + "</div>") +
       areaPicker(ev.area) +
-      '<div class="field"><label>Note</label><textarea name="notes">' + esc(ev.notes || "") + "</textarea></div>" +
-      '<div class="sheet-actions"><button class="btn primary" type="submit">' + (formMode === "proposal" ? "Aggiorna proposta" : apple && formMode === "edit" ? "Proponi modifica" : "Salva") + "</button>" +
-      (formMode === "edit" && (apple || recurring) && (occDate || !recurring) ? '<button class="btn" type="button" data-act="hide" data-key="e:' + esc(recurring ? ev.id + "@" + occDate : ev.id) + '" data-title="' + esc(ev.title) + '">' + I.eyeOff + "Oscura" + (recurring ? " questo giorno" : "") + "</button>" : "") +
-      '<span class="spacer"></span>' +
-      (formMode === "edit" && !apple && recurring && occDate ? '<button class="btn danger" type="button" data-act="delete-occ" data-id="' + esc(ev.id) + '" data-occ="' + esc(occDate) + '">Elimina solo questa volta</button>' : "") +
-      (formMode === "edit" && !apple ? '<button class="btn danger" type="button" data-act="delete-event" data-id="' + esc(ev.id) + '">' + (recurring ? "Elimina la serie" : "Elimina") + "</button>" : "") +
-      '<button class="btn ghost" type="button" data-act="close">Chiudi</button></div></form>');
+      '<details class="more"' + (showMore ? " open" : "") + "><summary>Altre opzioni</summary>" +
+      fGroup([
+        apple ? "" : fRow("Si ripete", '<select name="repeat">' + Object.keys(REPEAT_LBL).map((k) => '<option value="' + k + '"' + ((ev.repeat || "none") === k ? " selected" : "") + ">" + REPEAT_LBL[k] + "</option>").join("") + "</select>"),
+        apple ? "" : fRow("Fino al", '<input type="date" name="until" value="' + esc(ev.until || "") + '">'),
+        fRow("Luogo", '<input type="text" name="location" placeholder="Facoltativo" value="' + esc(ev.location || "") + '">'),
+        fRow("Minuti per arrivarci", '<input type="number" inputmode="numeric" name="travel" min="0" max="240" step="5" placeholder="Auto" value="' + (ev.travel != null && ev.travel !== "" ? esc(ev.travel) : "") + '">'),
+      ]) +
+      '<textarea class="notes" name="notes" placeholder="Note">' + esc(ev.notes || "") + "</textarea></details>" +
+      '<button class="btn primary block save" type="submit">' + (formMode === "proposal" ? "Aggiorna proposta" : apple && formMode === "edit" && mode === "demo" ? "Proponi modifica" : "Salva") + "</button>" +
+      (secondary ? '<div class="sheet-secondary">' + secondary + "</div>" : "") + "</form>");
   }
 
   function newTaskDraft(over) {
@@ -2073,6 +2095,16 @@
         case "set-dur": {
           const f = a.closest("form");
           f.elements.duration.value = a.dataset.min;
+          a.parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === a));
+          break;
+        }
+        case "ev-dur": {
+          const f = a.closest("form");
+          const st = f.elements.start.value;
+          if (st) {
+            const m = (T.hmToMin(st) + +a.dataset.min) % 1440;
+            f.elements.end.value = T.pad(Math.floor(m / 60)) + ":" + T.pad(m % 60);
+          }
           a.parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === a));
           break;
         }
