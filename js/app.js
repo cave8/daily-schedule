@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.9.1";
+  const APP_VERSION = "0.9.2";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -394,11 +394,7 @@
       return '<div class="card now"><div class="label"><i></i>Adesso</div><div class="title">' + esc(cur.title) + "</div>" +
         '<div class="meta">Fino alle ' + T.fmtHM(cur.end) + "</div>" + nextLine + "</div>";
     }
-    if (next) {
-      const mins = Math.round((next.start - t) / MIN);
-      return '<div class="card now slim"><span class="label"><i></i>Libero</span><span class="slim-text">' + (mins > 0 ? "tra " + T.fmtDurShort(mins) + ": " : "ora: ") + "<b>" + esc(next.title) + "</b></span>" +
-        (next.kind === "task" ? '<button class="btn small primary" data-act="start" data-id="' + esc(next.taskId) + '">' + I.play + "Inizia</button>" : "") + "</div>";
-    }
+    // Niente in corso: nessuna scheda, si va dritti al programma
     return "";
   }
 
@@ -1943,7 +1939,7 @@
     el._undo = undoSnapshot;
     el._edit = edit || null;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, undoSnapshot ? 7000 : 3500);
+    toastTimer = setTimeout(() => { el.hidden = true; }, undoSnapshot || edit ? 3500 : 2200);
   }
 
   // ---------------- tocchi ----------------
@@ -2217,6 +2213,7 @@
       }
       return;
     }
+    if (e.target.closest && e.target.closest("#toast")) { $("#toast").hidden = true; return; }
     const o = e.target.closest("[data-open]");
     if (o) {
       const [kind, id, occ] = o.dataset.open.split(":");
