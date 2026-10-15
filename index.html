@@ -33,9 +33,10 @@
       </header>
       <main id="view" aria-live="polite"></main>
       <div class="composer" id="quick">
+        <div class="quick-preview" id="quick-preview" hidden></div>
         <form id="quick-form" autocomplete="off">
           <button type="button" class="cbtn" data-act="add-menu" aria-label="Aggiungi con il modulo"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-          <input id="quick-input" type="text" enterkeyhint="send" placeholder="Chiedi o aggiungi qualcosa…" aria-label="Scrivi all'assistente">
+          <input id="quick-input" type="text" enterkeyhint="send" placeholder="Aggiungi… es. «Dentista domani alle 15»" aria-label="Scrivi all'assistente">
           <button type="submit" class="cbtn send" aria-label="Invia"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
         </form>
       </div>

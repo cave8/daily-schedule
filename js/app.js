@@ -172,7 +172,7 @@
     if (mode === "demo") banner.innerHTML = "DATI DIMOSTRATIVI · niente di reale viene letto o modificato <button data-act=\"exit-demo\">Esci dalla demo</button>";
     document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === ui.tab));
     const showWelcome = !state.onboarded && mode === "real";
-    const composer = !showWelcome && (ui.tab === "oggi" || ui.tab === "assistente");
+    const composer = !showWelcome && ui.tab !== "impostazioni";
     $("#quick").hidden = !composer;
     if (document.body && document.body.classList) document.body.classList.toggle("composer-on", composer);
     const view = $("#view");
@@ -284,9 +284,9 @@
     max = max || 3;
     return ws.slice(0, max).map((w) => {
       const cls = w.type === "overdue" || w.type === "late" || w.type === "conflict" ? "danger" : "warn";
-      const btn = w.taskId ? ' <button class="link" data-open="task:' + esc(w.taskId) + '">Sistema</button>' : "";
+      const btn = ' <button class="link" data-act="fix" data-key="' + esc(w.key || "") + '">Sistema</button>';
       return '<div class="alert ' + cls + '">' + I.alert + "<span>" + esc(w.text) + btn + "</span></div>";
-    }).join("") + (ws.length > max ? '<p class="small muted" style="margin:4px 4px 0">e altri ' + (ws.length - max) + ' avvisi · <button class="link small" data-tab="attivita">Vedi attività</button></p>' : "");
+    }).join("") + (ws.length > max ? '<p class="small muted" style="margin:4px 4px 0">e altri ' + (ws.length - max) + ' avvisi · <button class="link small" data-act="all-warnings">Vedi tutti</button></p>' : "");
   }
 
   function checkinsHTML() {
@@ -545,16 +545,58 @@
     if (state.chat.length > 200) state.chat = state.chat.slice(-200);
   }
 
+  // Solo aggiunte di cose nuove di Daily Schedule (niente dati Apple, niente modifiche): si fanno subito
+  function isPureAdd(r) {
+    return !!(r && r.ops && r.ops.length && r.ops.every((o) => (o.type === "create_task" || o.type === "create_event") && !PR.touchesApple(o)));
+  }
+
+  function addedLine(type, id) {
+    const t = now();
+    if (type === "create_event") {
+      const e = eventById(id);
+      return e ? e.title + " · " + T.fmtDay(T.fromISO(e.start), t).toLowerCase() + " " + T.fmtHM(T.fromISO(e.start)) + "–" + T.fmtHM(T.fromISO(e.end)) : "";
+    }
+    const x = taskById(id), inf = state.plan.info[id] || {};
+    return x ? x.title + " · " + (inf.start ? T.fmtDay(inf.start, t).toLowerCase() + " alle " + T.fmtHM(inf.start) : inf.unplanned ? "da pianificare" : "senza posto per ora") : "";
+  }
+
+  function instantAdd(r, text) {
+    const snap = JSON.stringify(state);
+    const n = now();
+    const added = [];
+    for (const o of r.ops) {
+      const item = JSON.parse(JSON.stringify(o.after));
+      item.createdAt = T.toISO(n);
+      if (o.type === "create_task") { item.done = false; if (item.remaining == null) item.remaining = item.duration; state.tasks.push(item); }
+      else { item.exceptions = item.exceptions || []; state.events.push(item); }
+      added.push({ type: o.type, id: item.id });
+    }
+    replan(); save();
+    const lines = added.map((x) => addedLine(x.type, x.id));
+    const est = (r.text.match(/Durate stimate[^\n]*/) || [""])[0];
+    const dup = (r.text.match(/^.*c'è già.*$/gm) || []);
+    if (ui.tab === "assistente") {
+      addMsg({ role: "user", text });
+      addMsg({ role: "assistant", text: "Fatto ✓ Ho aggiunto:\n" + lines.map((l) => "• " + l).join("\n") + (dup.length ? "\n" + dup.join("\n") : "") + (est ? "\n" + est : "") + "\nSe qualcosa non va, tocca «Annulla» qui sotto o aprilo dal programma." });
+      save();
+    }
+    render();
+    if (ui.tab === "assistente") scrollChatEnd();
+    toast(added.length === 1 ? "Aggiunto: " + lines[0] : "Aggiunti " + added.length + " elementi", snap,
+      added.length === 1 ? { kind: added[0].type === "create_event" ? "event" : "task", id: added[0].id } : null);
+  }
+
   function ask(text) {
     text = String(text || "").trim();
     if (!text) return;
-    if (ui.tab !== "assistente") { ui.tab = "assistente"; rememberTab(); }
-    addMsg({ role: "user", text });
     let r;
     try { r = A.respond(text, state, now()); } catch (e) {
       console.error(e);
       r = { text: "Scusa, qualcosa è andato storto mentre leggevo la richiesta. Prova a riformularla." };
     }
+    if (isPureAdd(r)) { instantAdd(r, text); return; }
+    if (ui.tab !== "assistente") { ui.tab = "assistente"; rememberTab(); }
+    addMsg({ role: "user", text });
     const msg = { role: "assistant", text: r.text, actions: r.actions, dayPlan: r.dayPlan, suggestions: r.suggestions };
     if (r.ops && r.ops.length) {
       const p = newProposal(r.ops, { summary: r.summary, reason: r.reason });
@@ -660,6 +702,157 @@
     save(); render(); scrollChatEnd();
   }
 
+
+
+  // ---------------- "Sistema": rimedi concreti per ogni avviso ----------------
+  function findWarning(key) { return ((state.plan && state.plan.warnings) || []).find((w) => w.key === key); }
+
+  function fmtSpan(a, t) {
+    return T.fmtDay(a.start, t, { short: true }).toLowerCase() + " " + T.fmtHM(a.start) + "–" + T.fmtHM(a.end);
+  }
+
+  // Un appuntamento si può spostare da qui? (Apple: non nella versione reale)
+  function eventMovable(ref) {
+    const ev = eventById(ref.eventId || ref.id);
+    if (!ev) return false;
+    if (ev.repeat && ev.repeat !== "none") return false;
+    return !isApple(ev.source) || mode === "demo";
+  }
+
+  function fixOption(label, op, data, sub) {
+    let attrs = ' data-act="fix-do" data-op="' + op + '"';
+    for (const k of Object.keys(data || {})) attrs += " data-" + k + '="' + esc(data[k]) + '"';
+    return '<button class="btn"' + attrs + '><span><b>' + label + "</b>" + (sub ? '<br><span class="small muted">' + sub + "</span>" : "") + "</span></button>";
+  }
+
+  function fixSheet(key) {
+    const w = findWarning(key);
+    if (!w) { toast("Questo avviso non c'è più"); return; }
+    const t = now();
+    const buf = (state.settings.buffer || 0) * MIN;
+    let title = "Sistemiamo", intro = esc(w.text), opts = [];
+    const item = (r) => '<div class="g-row"><span class="gi' + (isApple(r.source) ? " orange" : "") + '">' + (r.kind === "task" ? I.check : I.calendar) + '</span><div class="gt"><b>' + esc(r.title) + "</b><span>" + fmtSpan(r, t) + (isApple(r.source) ? " · " + (r.kind === "task" ? "Promemoria" : "Calendario") : "") + "</span></div></div>";
+    let body = "";
+    if (w.type === "conflict") {
+      title = "Due impegni si sovrappongono";
+      intro = "Scegli come sistemarli. Nulla viene cancellato.";
+      body = '<div class="group" style="margin-bottom:14px">' + item(w.a) + item(w.b) + "</div>";
+      const pairs = [[w.a, w.b], [w.b, w.a]];
+      for (const [x, y] of pairs) {
+        const dur = x.end - x.start;
+        const after = y.end + buf, before = y.start - buf - dur;
+        if (x.kind === "task") {
+          opts.push(fixOption("Fai «" + esc(x.title) + "» dopo, alle " + T.fmtHM(after), "pin-task", { id: x.taskId, at: after }));
+          if (before >= t) opts.push(fixOption("Fai «" + esc(x.title) + "» prima, alle " + T.fmtHM(before), "pin-task", { id: x.taskId, at: before }));
+          opts.push(fixOption("Scegli tu un orario libero per «" + esc(x.title) + "»", "unpin-task", { id: x.taskId }, "Lo metto io dove c'è spazio, nello stesso giorno"));
+        } else if (eventMovable(x)) {
+          opts.push(fixOption("Sposta «" + esc(x.title) + "» alle " + T.fmtHM(after) + "–" + T.fmtHM(after + dur), "move-event", { id: x.eventId || x.id, start: after, end: after + dur },
+            isApple(x.source) ? "Evento Apple (demo): ti chiedo conferma" : ""));
+          if (before >= t) opts.push(fixOption("Anticipa «" + esc(x.title) + "» alle " + T.fmtHM(before) + "–" + T.fmtHM(before + dur), "move-event", { id: x.eventId || x.id, start: before, end: before + dur }));
+        }
+      }
+      for (const x of [w.a, w.b]) {
+        if (x.kind === "event") opts.push(fixOption("Oscura «" + esc(x.title) + "» per quel giorno", "hide", { key: "e:" + x.id, title: x.title }, "Non lo cancello: lo ignoro nel programma"));
+        else if (x.source === "apple-reminders") opts.push(fixOption("Oscura «" + esc(x.title) + "» per oggi", "hide", { key: "t:" + x.taskId + "@" + T.dateKey(x.start), title: x.title }));
+      }
+      if ([w.a, w.b].some((x) => x.kind === "event" && isApple(x.source)) && mode === "real") {
+        intro += "<br><span class=\"small muted\">Gli eventi di Apple Calendar si spostano dall'app Calendario: qui si aggiornano da soli.</span>";
+      }
+    } else if (w.type === "travel") {
+      title = "Poco tempo per arrivare";
+      body = '<div class="group" style="margin-bottom:14px">' + item(w.a) + item(w.b) + "</div>";
+      const gap = Math.floor((w.b.start - w.a.end) / MIN);
+      if (gap >= 5) opts.push(fixOption("Mi bastano " + T.fmtDur(gap), "set-travel", { id: w.b.eventId || w.b.id, min: gap }, "Imposto " + T.fmtDur(gap) + " per arrivare"));
+      opts.push(fixOption("Non devo spostarmi", "set-travel", { id: w.b.eventId || w.b.id, min: 0 }));
+      if (eventMovable(w.b)) {
+        const s0 = w.a.end + w.travel * MIN, d = w.b.end - w.b.start;
+        opts.push(fixOption("Sposta «" + esc(w.b.title) + "» alle " + T.fmtHM(s0), "move-event", { id: w.b.eventId || w.b.id, start: s0, end: s0 + d }));
+      }
+    } else if (w.type === "overdue" || w.type === "late" || w.type === "unscheduled" || w.type === "routine") {
+      const tk = taskById(w.taskId);
+      if (!tk) { toast("Attività non trovata"); return; }
+      title = w.type === "overdue" ? "Attività scaduta" : w.type === "late" ? "Non ci sta prima della scadenza" : "Non trova posto";
+      body = '<div class="group" style="margin-bottom:14px"><div class="g-row"><span class="gi' + (isApple(tk.source) ? " orange" : "") + '">' + I.check + '</span><div class="gt"><b>' + esc(tk.title) + "</b><span>" +
+        T.fmtDur(S.taskRemaining(tk)) + (tk.deadline ? " · scadenza " + fmtDeadline(tk.deadline, t) : "") + "</span></div></div></div>";
+      const today = T.dateKey(t), tomorrow = T.dateKey(T.addDays(T.startOfDay(t), 1));
+      if (w.type === "routine") {
+        opts.push(fixOption("Salta per oggi", "skip-routine", { id: tk.id }));
+      } else {
+        if (w.type === "overdue") opts.push(fixOption("Falla oggi", "plan-day", { id: tk.id, day: today }, "La metto nel programma di oggi"));
+        opts.push(fixOption("Spostala a domani", "plan-day", { id: tk.id, day: tomorrow }));
+        if (!isApple(tk.source) && tk.deadline) opts.push(fixOption("Sposta la scadenza a " + (w.type === "overdue" ? "oggi" : "domani"), "set-deadline", { id: tk.id, day: w.type === "overdue" ? today : tomorrow }));
+        if (tk.splittable === false) opts.push(fixOption("Si può dividere in più momenti", "set-split", { id: tk.id }));
+        if (S.taskRemaining(tk) >= 30) opts.push(fixOption("Basta meno tempo: " + T.fmtDur(Math.round(S.taskRemaining(tk) / 2 / 5) * 5), "set-duration", { id: tk.id, min: Math.round(S.taskRemaining(tk) / 2 / 5) * 5 }));
+        if (tk.priority !== 1 && w.type === "late") opts.push(fixOption("Dalle la precedenza", "set-priority", { id: tk.id }));
+        if (!isApple(tk.source)) opts.push(fixOption("È già fatta", "mark-done", { id: tk.id }));
+      }
+      opts.push(fixOption("Apri l'attività", "open-task", { id: tk.id }));
+    } else if (w.type === "overloaded") {
+      title = "Giornata troppo piena";
+      intro = "Sposta a domani qualcosa di meno importante:";
+      const d = T.fromKey(w.day), de = T.addDays(d, 1);
+      const ids = [...new Set(state.plan.blocks.filter((b) => b.kind === "task" && b.start >= d && b.start < de && !b.pinned && !b.locked).map((b) => b.taskId))];
+      const list = ids.map(taskById).filter((x) => x && !x.routineId).sort((a, b) => (b.priority || 2) - (a.priority || 2) || S.taskRemaining(b) - S.taskRemaining(a));
+      for (const x of list.slice(0, 6)) opts.push(fixOption("«" + esc(x.title) + "» a domani", "plan-day", { id: x.id, day: T.dateKey(de) }, T.fmtDur(S.taskRemaining(x)) + " · priorità " + PRIO[x.priority || 2].toLowerCase()));
+    }
+    if (w.key) opts.push('<button class="btn" data-act="fix-do" data-op="ack" data-key="' + esc(w.key) + '"><span><b>Va bene così</b><br><span class="small muted">Non mostrare più questo avviso</span></span></button>');
+    openModal("<h2>" + I.alert + " " + title + '</h2><p class="sub" style="margin:-6px 0 14px">' + intro + "</p>" + body +
+      '<div class="menu">' + opts.join("") + '<button class="btn ghost" data-act="close">Chiudi</button></div>');
+  }
+
+  function fixDo(a) {
+    const d = a.dataset, op = d.op;
+    closeModal();
+    const task = (s) => s.tasks.find((x) => x.id === d.id);
+    switch (op) {
+      case "ack": commit((s) => { s.ackWarnings[d.key] = now(); }, "Ok, lascio così"); break;
+      case "hide": hideItem(d.key, d.title); break;
+      case "pin-task": commit((s) => {
+        const x = task(s); if (!x) return;
+        const iso = T.toISO(+d.at);
+        if (isApple(x.source) && x.pinnedStart) x.pinOverride = { day: x.pinnedStart.slice(0, 10), value: iso };
+        else x.pinnedStart = iso;
+        unlock(s, x.id);
+      }, "Spostata alle " + T.fmtHM(+d.at)); break;
+      case "unpin-task": commit((s) => {
+        const x = task(s); if (!x) return;
+        if (isApple(x.source) && x.pinnedStart) x.pinOverride = { day: x.pinnedStart.slice(0, 10), value: null };
+        else x.pinnedStart = null;
+        unlock(s, x.id);
+      }, "Ok, la metto io dove c'è spazio"); break;
+      case "move-event": {
+        const ev = eventById(d.id);
+        if (!ev) break;
+        const after = { start: T.toISO(+d.start), end: T.toISO(+d.end) };
+        if (isApple(ev.source)) { proposeEdit("update_event", ev, Object.assign({}, ev, after), "Spostare «" + ev.title + "»"); break; }
+        commit((s) => Object.assign(s.events.find((x) => x.id === d.id), after), "«" + ev.title + "» spostato alle " + T.fmtHM(+d.start));
+        break;
+      }
+      case "set-travel": commit((s) => { s.events.find((x) => x.id === d.id).travel = +d.min; }, +d.min ? "Tempo per arrivare: " + T.fmtDur(+d.min) : "Nessuno spostamento"); break;
+      case "plan-day": commit((s) => {
+        const x = task(s); if (!x) return;
+        x.notBefore = d.day; x.snoozeUntil = null;
+        if (x.pinnedStart && !isApple(x.source) && x.pinnedStart.slice(0, 10) < d.day) x.pinnedStart = null;
+        if (x.deadline && !isApple(x.source) && S.deadlineMs(x.deadline) <= T.fromKey(d.day)) x.deadline = d.day;
+        if (isApple(x.source)) s.ackWarnings["o:" + x.id] = now();
+        unlock(s, x.id);
+      }, d.day === T.dateKey(now()) ? "La faccio oggi" : "Spostata a " + T.fmtDay(T.fromKey(d.day), now()).toLowerCase()); break;
+      case "set-deadline": commit((s) => { const x = task(s); if (x) x.deadline = d.day; }, "Scadenza spostata"); break;
+      case "set-split": commit((s) => { const x = task(s); if (x) x.splittable = true; }, "Ora si può dividere"); break;
+      case "set-duration": commit((s) => { const x = task(s); if (x) { x.remaining = +d.min; x.duration = Math.max(+d.min, x.duration || 0); } }, "Durata: " + T.fmtDur(+d.min)); break;
+      case "set-priority": commit((s) => { const x = task(s); if (x) x.priority = 1; }, "Priorità alta"); break;
+      case "mark-done": markDone(d.id); break;
+      case "skip-routine": { const tk = taskById(d.id); if (tk) commit((s) => { s.routineSkips[tk.routineId + "@" + tk.occ] = true; }, "Saltata per oggi"); break; }
+      case "open-task": { const tk = taskById(d.id); if (tk) (tk.routineId ? routineOccSheet(tk) : taskForm(tk, "edit")); break; }
+    }
+  }
+
+  function allWarningsSheet() {
+    const ws = (state.plan && state.plan.warnings) || [];
+    openModal("<h2>" + I.alert + ' Avvisi</h2><div class="menu">' + ws.map((w) =>
+      '<button class="btn" data-act="fix" data-key="' + esc(w.key || "") + '"><span>' + esc(w.text) + '</span></button>').join("") +
+      '<button class="btn ghost" data-act="close">Chiudi</button></div>');
+  }
 
   // ---------------- Apple (tramite l'app per Mac, sola lettura) ----------------
   let appleBusy = false, applePending = false;
@@ -1276,7 +1469,7 @@
     html += '<div class="sec"><h2>Installa</h2></div><div class="group">' +
       row(I.phone, "", "iPhone", "In Safari: Condividi, poi «Aggiungi alla schermata Home»", "") +
       row(I.laptop, "", "Mac", "In Safari: menu File, poi «Aggiungi al Dock»", "") + "</div>" +
-      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione 0.7</p>';
+      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione 0.8</p>';
     return html;
   }
 
@@ -1672,13 +1865,14 @@
 
   // ---------------- messaggi ----------------
   let toastTimer = null;
-  function toast(msg, undoSnapshot) {
+  function toast(msg, undoSnapshot, edit) {
     const el = $("#toast");
-    el.innerHTML = "<span>" + esc(msg) + "</span>" + (undoSnapshot ? '<button data-act="undo">Annulla</button>' : "");
+    el.innerHTML = "<span>" + esc(msg) + "</span>" + (edit ? '<button data-act="toast-edit">Modifica</button>' : "") + (undoSnapshot ? '<button data-act="undo">Annulla</button>' : "");
     el.hidden = false;
     el._undo = undoSnapshot;
+    el._edit = edit || null;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, undoSnapshot ? 6000 : 3500);
+    toastTimer = setTimeout(() => { el.hidden = true; }, undoSnapshot ? 7000 : 3500);
   }
 
   // ---------------- tocchi ----------------
@@ -1846,6 +2040,16 @@
           break;
         }
         case "hide": hideItem(a.dataset.key, a.dataset.title); break;
+        case "fix": closeModal(); fixSheet(a.dataset.key); break;
+        case "toast-edit": {
+          const el = $("#toast"), ed = el._edit;
+          el.hidden = true;
+          if (ed && ed.kind === "event" && eventById(ed.id)) eventForm(eventById(ed.id), "edit");
+          if (ed && ed.kind === "task" && taskById(ed.id)) taskForm(taskById(ed.id), "edit");
+          break;
+        }
+        case "fix-do": fixDo(a); break;
+        case "all-warnings": allWarningsSheet(); break;
         case "apple-connect": appleConnect(a.dataset.kind); break;
         case "apple-sync": appleSync(true); toast("Aggiorno da Calendario e Promemoria…"); break;
         case "apple-disconnect": {
@@ -1953,6 +2157,7 @@
       const input = $("#quick-input");
       const v = input.value;
       input.value = "";
+      const box = $("#quick-preview"); if (box) { box.hidden = true; box.innerHTML = ""; }
       ask(v);
     }
     if (e.target.id === "task-form") saveTaskForm(e.target);
@@ -2003,6 +2208,34 @@
       }
     }, "Impostazioni salvate");
   });
+
+  // Anteprima di cosa ho capito, mentre scrivi
+  function quickPreview() {
+    const inp = $("#quick-input"), box = $("#quick-preview");
+    if (!inp || !box) return;
+    const v = inp.value.trim();
+    if (v.length < 3) { box.hidden = true; box.innerHTML = ""; return; }
+    let r = null;
+    try { r = A.respond(v, state, now()); } catch (e) { r = null; }
+    let html;
+    if (r && isPureAdd(r)) {
+      html = '<span class="qp-ic">' + I.plus + "</span><span>" + r.ops.map((o) => {
+        const a = o.after;
+        if (o.type === "create_event") return "<b>" + esc(a.title) + "</b> " + T.fmtDay(T.fromISO(a.start), now()).toLowerCase() + " " + T.fmtHM(T.fromISO(a.start)) + "–" + T.fmtHM(T.fromISO(a.end));
+        return "<b>" + esc(a.title) + "</b> " + T.fmtDur(a.duration) + (a.notBefore ? " · " + T.fmtDay(T.fromISO(a.notBefore), now()).toLowerCase() : a.deadline ? " · entro " + fmtDeadline(a.deadline, now()) : "");
+      }).join(" · ") + '</span><span class="qp-hint">Invio per aggiungere</span>';
+    } else if (r && !r.ops && /c'è già/.test(r.text || "")) {
+      const m = (r.text.match(/c'è già «([^»]+)» ([^:]+)/) || []);
+      html = '<span class="qp-ic">' + I.check + "</span><span>Già in programma" + (m[1] ? ": <b>" + esc(m[1]) + "</b> " + esc(m[2]) : "") + "</span>";
+    } else if (r && r.ops && r.ops.length) {
+      html = '<span class="qp-ic">' + I.sparkle + "</span><span>" + esc(r.summary || "Modifica") + '</span><span class="qp-hint">Invio: ti mostro l\'anteprima</span>';
+    } else {
+      html = '<span class="qp-ic">' + I.sparkle + '</span><span>Lo chiedo all\'assistente</span><span class="qp-hint">Invio</span>';
+    }
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+  document.addEventListener("input", (e) => { if (e.target && e.target.id === "quick-input") quickPreview(); });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("#modal").hidden) closeModal();

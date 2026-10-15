@@ -90,18 +90,31 @@
   click({ act: "list-tab", v: "events" }); clean("elenco appuntamenti");
   click({ act: "list-tab", v: "tasks" });
 
-  // 4. Assistente: proposta con anteprima, niente cambia senza conferma
+  // 4. Aggiunta istantanea (cose nuove di Daily Schedule: subito, con Annulla e Modifica)
+  click({ tab: "oggi" });
   const nTasks = app.state.tasks.length;
   safe("richiesta", () => say("Domani devo studiare due ore, andare in palestra e fare la spesa"));
-  ok(app.ui.tab === "assistente", "la barra porta all'assistente");
-  ok(/Conferma modifiche/.test(view()) && /Modifica proposta/.test(view()) && /Annulla/.test(view()), "proposta con i tre pulsanti");
-  ok(/Cosa cambia/.test(view()) && /Restano invariati/.test(view()), "anteprima con cambiamenti e invariati");
-  ok(app.state.tasks.length === nTasks, "nessuna modifica prima della conferma");
-  clean("assistente con proposta");
+  ok(app.ui.tab === "oggi", "l'aggiunta non cambia schermata");
+  ok(app.state.tasks.length === nTasks + 2, "attività aggiunte subito (senza doppioni)", app.state.tasks.length - nTasks);
+  ok(/Aggiunti 2 elementi/.test(document.querySelector("#toast").innerHTML) && /Annulla/.test(document.querySelector("#toast").innerHTML), "messaggio con Annulla");
+  safe("annulla aggiunta", () => click({ act: "undo" }));
+  ok(app.state.tasks.length === nTasks, "Annulla toglie le aggiunte");
+  safe("una sola", () => say("Dentista venerdì alle 17"));
+  ok(app.state.events.some((e) => e.title === "Dentista" && e.start.endsWith("T17:00")) && /Modifica/.test(document.querySelector("#toast").innerHTML), "appuntamento aggiunto, con Modifica");
+  safe("modifica dal messaggio", () => click({ act: "toast-edit" }));
+  ok(/event-form/.test(modal()), "Modifica apre il modulo");
+  click({ act: "close" });
+  click({ tab: "assistente" });
+  safe("aggiunta da assistente", () => say("Leggere il giornale 20 min"));
+  ok(/Fatto ✓ Ho aggiunto/.test(view()) && app.state.tasks.some((t) => t.title === "Leggere il giornale"), "dall'assistente: aggiunto e spiegato");
+  ok(!app.state.proposals.some((p) => p.status === "pending"), "nessuna conferma per le aggiunte interne");
+  // le modifiche continuano a passare dall'anteprima con conferma
+  safe("modifica con conferma", () => say("Sposta lo studio al pomeriggio"));
   let p = lastPending();
+  ok(p && /Conferma modifiche/.test(view()) && /Modifica proposta/.test(view()) && /Cosa cambia/.test(view()), "le modifiche hanno anteprima e conferma");
+  clean("assistente con proposta");
   safe("conferma", () => click({ act: "confirm-proposal", pid: p.id }));
-  ok(app.state.tasks.length === nTasks + 2, "dopo la conferma le attività ci sono (senza doppioni)");
-  ok(app.state.proposals.find((x) => x.id === p.id).status === "applied", "proposta applicata");
+  ok(app.state.proposals.find((x) => x.id === p.id).status === "applied" && app.state.tasks.find((t) => t.id === "d-t2").pref === "afternoon", "proposta applicata");
   ok(/Fatto ✓/.test(view()) && /verificato/.test(view()), "esito comunicato dopo la verifica");
 
   // 5. Modifica proposta = nuova proposta e nuova conferma
@@ -123,7 +136,7 @@
   ok(/nessun dato reale/.test(view()), "in demo dichiara che è simulato");
 
   // 6. Annulla
-  safe("sposta studio", () => say("Sposta lo studio al pomeriggio"));
+  safe("sposta studio", () => say("Sposta lo studio alla mattina"));
   p = lastPending();
   const prefBefore = app.state.tasks.find((t) => t.id === "d-t2").pref;
   safe("annulla", () => click({ act: "cancel-proposal", pid: p.id }));
@@ -267,8 +280,6 @@
 
   // 12. Uso reale: assistente + conferma, imprevisto, check-in, impostazioni
   safe("aggiungi reale", () => say("Dentista oggi alle 11"));
-  p = lastPending();
-  safe("conferma reale", () => click({ act: "confirm-proposal", pid: p.id }));
   ok(app.state.events.length === 1 && app.state.events[0].source === "internal", "appuntamento interno creato");
   safe("attività dal modulo", () => submit("task-form", { id: "", mode: "new" },
     { title: "Report", duration: "60", priority: "1", dlDate: "", dlTime: "", pref: "", notBefore: "", pinnedStart: "", splittable: "on", notes: "" }));
@@ -290,11 +301,54 @@
   safe("impostazioni", () => handlers.change({ target: { dataset: { set: "num", key: "dailyLoad" }, value: "70", min: "30", max: "100" } }));
   ok(app.state.settings.dailyLoad === 70, "impostazione margine salvata");
 
+  // 12b. "Sistema": rimedi concreti
+  const dk = G.time.dateKey(app.now());
+  safe("due appuntamenti sovrapposti", () => { say("Call con Marco oggi dalle 15 alle 16"); say("Riunione budget oggi dalle 15:30 alle 16:30"); });
+  let cw = app.state.plan.warnings.find((w) => w.type === "conflict" && /Call con Marco/.test(w.text));
+  ok(cw && cw.key && cw.a && cw.b, "avviso di sovrapposizione con i due impegni");
+  click({ tab: "oggi" });
+  ok(new RegExp('data-act="fix" data-key="' + cw.key.replace(/[|]/g, "\\|")).test(view()), "pulsante Sistema collegato all'avviso");
+  safe("apri sistema", () => click({ act: "fix", key: cw.key }));
+  ok(/Due impegni si sovrappongono/.test(modal()) && /move-event/.test(modal()) && /Va bene così/.test(modal()) && /Oscura/.test(modal()), "rimedi proposti");
+  const rb = app.state.events.find((e) => e.title === "Riunione budget");
+  const callEv = app.state.events.find((e) => e.title === "Call con Marco");
+  const after = G.time.fromISO(callEv.end) + app.state.settings.buffer * 60000;
+  safe("sposta dopo", () => click({ act: "fix-do", op: "move-event", id: rb.id, start: String(after), end: String(after + 3600000) }));
+  ok(app.state.events.find((e) => e.id === rb.id).start === G.time.toISO(after) && !app.state.plan.warnings.some((w) => w.type === "conflict"), "spostato: sovrapposizione risolta");
+  // promemoria Apple a orario contro evento Apple (versione reale: Apple non si modifica)
+  G.apple.merge(app.state, { events: [{ id: "EV@x", externalId: "EV", title: "Medico", start: dk + "T10:00", end: dk + "T11:00", allDay: false }],
+    reminders: [{ id: "RM", title: "Integratori", due: dk + "T10:00", hasTime: true, priority: 0 }] }, app.now(), { calendar: true, reminders: true });
+  app.tick();
+  cw = app.state.plan.warnings.find((w) => w.type === "conflict" && w.taskId === "ar:RM");
+  ok(cw, "promemoria alle 10 sovrapposto al medico: avviso");
+  safe("sistema apple", () => click({ act: "fix", key: cw.key }));
+  ok(!/move-event" data-id="ac:/.test(modal()) && /pin-task/.test(modal()), "evento Apple non spostabile da qui, il promemoria sì (solo in Daily Schedule)");
+  safe("dopo il medico", () => click({ act: "fix-do", op: "pin-task", id: "ar:RM", at: String(G.time.fromISO(dk + "T11:10")) }));
+  const rmb = app.state.plan.blocks.find((b) => b.taskId === "ar:RM");
+  ok(rmb && G.time.fmtHM(rmb.start) === "11:10" && app.state.tasks.find((t) => t.id === "ar:RM").pinnedStart === dk + "T10:00", "promemoria spostato alle 11:10 in Daily Schedule, dato Apple intatto");
+  G.apple.merge(app.state, { events: [{ id: "EV@x", externalId: "EV", title: "Medico", start: dk + "T10:00", end: dk + "T11:00", allDay: false }],
+    reminders: [{ id: "RM", title: "Integratori", due: dk + "T10:00", hasTime: true, priority: 0 }] }, app.now(), { calendar: true, reminders: true });
+  app.tick();
+  ok(G.time.fmtHM(app.state.plan.blocks.find((b) => b.taskId === "ar:RM").start) === "11:10", "la scelta resta dopo l'aggiornamento da Apple");
+  // va bene così
+  safe("due eventi sovrapposti 2", () => { say("Pranzo con Anna oggi dalle 18 alle 19"); say("Aperitivo oggi dalle 18:30 alle 19:30"); });
+  cw = app.state.plan.warnings.find((w) => w.type === "conflict" && /Pranzo con Anna/.test(w.text));
+  safe("ack", () => click({ act: "fix-do", op: "ack", key: cw.key }));
+  ok(!app.state.plan.warnings.some((w) => w.key === cw.key), "«Va bene così» toglie l'avviso");
+  // attività scaduta
+  app.state.tasks.push({ id: "old1", title: "Vecchia pratica", duration: 30, remaining: 30, priority: 2, deadline: "2026-10-01", source: "internal", createdAt: "2026-09-20T09:00" });
+  app.tick();
+  const ow = app.state.plan.warnings.find((w) => w.type === "overdue" && w.taskId === "old1");
+  safe("sistema scaduta", () => click({ act: "fix", key: ow.key }));
+  ok(/Falla oggi/.test(modal()) && /Spostala a domani/.test(modal()), "rimedi per un'attività scaduta");
+  safe("falla oggi", () => click({ act: "fix-do", op: "plan-day", id: "old1", day: dk }));
+  ok(app.state.tasks.find((t) => t.id === "old1").deadline === dk && !app.state.plan.warnings.some((w) => w.taskId === "old1" && w.type === "overdue"), "scaduta riprogrammata per oggi");
+
   // 13. Salvataggio
   const saved = JSON.parse(store["dailyschedule.real"]);
-  ok(saved.tasks.length === 2 && saved.events.length === 2 && saved.profile.name === "Elia", "dati reali salvati");
+  ok(saved.tasks.some((t) => t.title === "Report") && saved.events.some((e) => e.title === "Dentista") && saved.profile.name === "Elia", "dati reali salvati");
   const demoSaved = JSON.parse(store["dailyschedule.demo"]);
-  ok(demoSaved.tasks.some((t) => t.title === "Studiare"), "dati demo conservati a parte");
+  ok(demoSaved.tasks.some((t) => t.title === "Leggere il giornale"), "dati demo conservati a parte");
 
   // 14. Migrazione dal vecchio nome
   store["giornata.v1"] = JSON.stringify({ tasks: [{ id: "old", title: "Vecchia", duration: 30 }], events: [] });

@@ -31,6 +31,7 @@
       routineLog: {},    // "idRoutine": [giorni in cui è stata fatta]
       daily: {},         // "giorno": { briefing, closed } (briefing del mattino, chiusura della sera)
       focus: null,       // timer di concentrazione in corso
+      ackWarnings: {},   // avvisi lasciati così dall'utente ("va bene così")
     };
   }
 
@@ -51,6 +52,7 @@
     out.hidden = s.hidden && typeof s.hidden === "object" ? s.hidden : {};
     out.routineLog = s.routineLog && typeof s.routineLog === "object" ? s.routineLog : {};
     out.daily = s.daily && typeof s.daily === "object" ? s.daily : {};
+    out.ackWarnings = s.ackWarnings && typeof s.ackWarnings === "object" ? s.ackWarnings : {};
     out.integrations = Object.assign({ calendar: "off", reminders: "off" }, s.integrations);
     out.version = VERSION;
     return out;

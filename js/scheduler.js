@@ -120,6 +120,13 @@
     return out.sort((a, b) => a.start - b.start);
   }
 
+  // Orario fisso effettivo: quello scelto in Daily Schedule per quel giorno vince su quello di Apple
+  function pinOf(t) {
+    const o = t.pinOverride;
+    if (o && t.pinnedStart && o.day === String(t.pinnedStart).slice(0, 10)) return o.value || null;
+    return t.pinnedStart || null;
+  }
+
   // Appuntamenti senza quelli che l'utente ha "oscurato" (nascosti, non cancellati)
   function visibleEvents(state, fromMs, toMs) {
     const hid = state.hidden || {};
@@ -157,10 +164,14 @@
     const travelOf = (o) => (o.allDay ? 0 : o.travel != null ? Math.max(0, o.travel) : o.location ? defTravel : 0);
     // Gli eventi "tutto il giorno" (compleanni, ferie...) non occupano ore precise
     const events = allEvents.filter((o) => !o.allDay);
+    // Avvisi che l'utente ha deciso di lasciare così ("va bene così")
+    const ack = state.ackWarnings || {};
+    const ref = (o) => ({ kind: "event", id: o.id, eventId: o.eventId, title: o.title, start: o.start, end: o.end, source: o.source });
     for (let i = 0; i < events.length; i++) {
       for (let j = i + 1; j < events.length && events[j].start < events[i].end; j++) {
-        if (events[j].end > now) {
-          warnings.push({ type: "conflict", ids: [events[i].id, events[j].id],
+        const key = "c:" + events[i].id + "|" + events[j].id;
+        if (events[j].end > now && !ack[key]) {
+          warnings.push({ type: "conflict", key, a: ref(events[i]), b: ref(events[j]), ids: [events[i].id, events[j].id],
             text: "«" + events[i].title + "» e «" + events[j].title + "» si sovrappongono (" +
               T.fmtDay(events[j].start, now) + " " + T.fmtHM(events[j].start) + ")" });
         }
@@ -194,7 +205,7 @@
         blocks.push({ kind: "travel", id: "travel@" + o.id, eventId: o.eventId, title: "Spostamento verso «" + o.title + "»",
           start: o.start - tr, end: o.start, location: o.location });
         const clash = events.find((x) => x !== o && x.start < o.start && x.end > o.start - tr);
-        if (clash) warnings.push({ type: "travel", ids: [o.id], text: "Dopo «" + clash.title + "» non hai " + T.fmtDur(tr / MIN) + " per arrivare a «" + o.title + "»" });
+        if (clash && !ack["v:" + o.id]) warnings.push({ type: "travel", key: "v:" + o.id, a: ref(clash), b: ref(o), travel: tr / MIN, ids: [o.id], text: "Dopo «" + clash.title + "» non hai " + T.fmtDur(tr / MIN) + " per arrivare a «" + o.title + "»" });
       }
     }
 
@@ -206,7 +217,7 @@
     // Scadute
     for (const t of open) {
       if (t.deadline && deadlineMs(t.deadline) <= now) {
-        warnings.push({ type: "overdue", taskId: t.id, text: "«" + t.title + "» è scaduta" });
+        if (!ack["o:" + t.id]) warnings.push({ type: "overdue", key: "o:" + t.id, taskId: t.id, text: "«" + t.title + "» è scaduta" });
       }
     }
 
@@ -214,17 +225,20 @@
       return events.find((o) => o.start < e && o.end > s);
     }
 
-    // Attività con orario fisso
+    // Attività con orario fisso (per i promemoria Apple si può spostare l'orario solo in Daily Schedule)
     for (const t of open) {
-      if (!t.pinnedStart || remaining[t.id] <= 0) continue;
-      const s = T.fromISO(t.pinnedStart), e = s + remaining[t.id] * MIN;
+      const pin = pinOf(t);
+      if (!pin || remaining[t.id] <= 0) continue;
+      const s = T.fromISO(pin), e = s + remaining[t.id] * MIN;
       if (hiddenToday(t) && s < tomorrow) continue;
       if (e <= now) continue; // l'orario fisso è passato senza "Fatto": si ripianifica
       blocks.push({ kind: "task", id: t.id + "#pin", taskId: t.id, title: t.title, start: s, end: e, pinned: true,
         priority: t.priority || 2, late: e > deadlineMs(t.deadline), source: t.source || "internal", area: t.area || null, routine: !!t.routineId });
       info[t.id] = { start: s, end: e, chunks: 1, late: e > deadlineMs(t.deadline) };
       const clash = overlapsEvent(s, e);
-      if (clash) warnings.push({ type: "conflict", taskId: t.id,
+      const ckey = "c:t:" + t.id + "@" + T.dateKey(s) + "|" + (clash && clash.id);
+      if (clash && !ack[ckey]) warnings.push({ type: "conflict", key: ckey, taskId: t.id,
+        a: { kind: "task", taskId: t.id, title: t.title, start: s, end: e, source: t.source || "internal" }, b: ref(clash),
         text: "«" + t.title + "» ha un orario fisso che si sovrappone a «" + clash.title + "»" });
       remaining[t.id] = 0;
       free = subtract(free, s - buf, e + buf);
@@ -282,7 +296,7 @@
       return k;
     }
     // Promemoria senza data: non entrano da soli nel programma (finché non scegli tu un giorno)
-    const waiting = (t) => (t.noAuto && !t.notBefore && !t.pinnedStart) ||
+    const waiting = (t) => (t.noAuto && !t.notBefore && !pinOf(t)) ||
       // promemoria con una data già passata: restano fuori dalla giornata (sono segnalati come scaduti)
       (t.onDay && t.deadline && !t.notBefore && T.startOfDay(deadlineMs(t.deadline) - 1) < today);
     for (const t of open) if (waiting(t)) info[t.id] = { unplanned: true };
@@ -414,23 +428,26 @@
     blocks.push(...best.out);
     Object.assign(info, best.inf);
     for (const dk of [...best.tightDays].sort()) {
-      warnings.push({ type: "overloaded", day: dk,
+      if (ack["l:" + dk]) continue;
+      warnings.push({ type: "overloaded", key: "l:" + dk, day: dk,
         text: T.fmtDay(T.fromKey(dk), now) + " è molto piena: non resta margine per gli imprevisti" });
     }
     for (const id of best.late) {
       const t = byId[id];
       if (t.deadline && deadlineMs(t.deadline) <= now) continue; // già segnalata come scaduta
-      warnings.push({ type: "late", taskId: id, text: "«" + t.title + "» non ci sta prima della scadenza" });
+      if (ack["t:" + id]) continue;
+      warnings.push({ type: "late", key: "t:" + id, taskId: id, text: "«" + t.title + "» non ci sta prima della scadenza" });
     }
     for (const id of best.unscheduled) {
       const t = byId[id];
       info[id] = { unscheduled: true };
       if (t.strictDay || onDayOf(t) != null) {
         const dayKey = t.strictDay ? t.occ : T.dateKey(onDayOf(t));
-        if (dayKey === todayKey) warnings.push({ type: "routine", taskId: id, text: "Oggi non c'è spazio per «" + t.title + "»" });
+        if (dayKey === todayKey && !ack["r:" + id + "@" + dayKey]) warnings.push({ type: "routine", key: "r:" + id + "@" + dayKey, taskId: id, text: "Oggi non c'è spazio per «" + t.title + "»" });
         continue;
       }
-      warnings.push({ type: "unscheduled", taskId: id,
+      if (ack["u:" + id]) continue;
+      warnings.push({ type: "unscheduled", key: "u:" + id, taskId: id,
         text: "«" + t.title + "» non trova posto nei prossimi " + S.horizonDays + " giorni" +
           (t.splittable === false ? " (prova a renderla divisibile)" : "") });
     }
@@ -439,5 +456,5 @@
     return { generatedAt: now, horizonEnd, blocks, warnings, info };
   }
 
-  G.scheduler = { plan, defaultSettings, mergeSettings, expandEvents, visibleEvents, deadlineMs, taskRemaining, subtract, PREF };
+  G.scheduler = { plan, pinOf, defaultSettings, mergeSettings, expandEvents, visibleEvents, deadlineMs, taskRemaining, subtract, PREF };
 })(globalThis.G || (globalThis.G = {}));

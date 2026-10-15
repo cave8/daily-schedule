@@ -29,6 +29,8 @@ Legenda: ✅ fatto · 🟡 in parte · ⬜ da fare
 - ✅ Timer di concentrazione: il tempo reale aggiorna le stime
 - ✅ Passi (sotto-attività) e note visibili nella scheda «Adesso»
 - ✅ Tempo di spostamento prima degli appuntamenti con un luogo, con avviso se non c'è tempo
+- ✅ «Sistema» con rimedi concreti per ogni avviso (sovrapposizioni, scadute, giornata piena, tempo per arrivare) e «va bene così»
+- ✅ Aggiunta istantanea dalla barra, con anteprima mentre scrivi, Annulla e Modifica
 - ⬜ Dipendenze tra attività, livello di energia
 
 ## Fase 4 — Assistente
