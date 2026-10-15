@@ -1,8 +1,8 @@
 // Service worker: permette all'app di aprirsi anche senza connessione.
 // Strategia: prima la rete (così gli aggiornamenti arrivano subito), se manca la copia salvata.
-const CACHE = "daily-schedule-v10";
+const CACHE = "daily-schedule-v11";
 const FILES = ["./", "index.html", "css/style.css", "js/time.js", "js/scheduler.js", "js/parser.js", "js/areas.js", "js/stats.js",
-  "js/store.js", "js/routines.js", "js/proposals.js", "js/assistant.js", "js/apple.js", "js/demo.js", "js/app.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "fonts/archivo-latin.woff2"];
+  "js/store.js", "js/routines.js", "js/proposals.js", "js/assistant.js", "js/apple.js", "js/sync.js", "js/demo.js", "js/app.js", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "fonts/archivo-latin.woff2"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

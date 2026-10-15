@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.8.1";
+  const APP_VERSION = "0.9";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -89,6 +89,56 @@
 
   function save() {
     if (!ST.save(state, mode)) toast("Attenzione: non riesco a salvare (spazio pieno?)");
+    scheduleSync();
+  }
+
+  // ---------------- Sincronizzazione Mac ↔ iPhone ----------------
+  let syncTimer = null;
+  const syncOn = () => mode === "real" && G.sync && G.sync.status().signedIn;
+  function scheduleSync() {
+    if (!syncOn()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, 2500);
+  }
+  function syncNow(manual) {
+    if (!syncOn()) return Promise.resolve();
+    ui.syncing = true;
+    return G.sync.sync(state).then((r) => {
+      ui.syncing = false;
+      if (r && r.changed) { cleanCheckins(); replan(); ST.save(state, mode); }
+      if (r && r.changed || manual || ui.tab === "impostazioni") render();
+      if (manual) toast("Sincronizzato");
+    }).catch((e) => {
+      ui.syncing = false;
+      if (manual || ui.tab === "impostazioni") render();
+      if (manual) toast("Sincronizzazione non riuscita: " + e.message);
+    });
+  }
+
+  function syncSheet() {
+    openModal("<h2>" + I.cloud + " Sincronizzazione</h2>" +
+      '<p class="sub" style="margin:-6px 0 14px">Usa la stessa email e password sul Mac e sull\'iPhone. La prima volta, su un solo dispositivo, scegli «Crea il mio account».</p>' +
+      '<div class="field"><label for="sy-email">Email</label><input type="email" id="sy-email" autocomplete="username" style="text-transform:none" placeholder="la tua email"></div>' +
+      '<div class="field"><label for="sy-pass">Password (almeno 8 caratteri)</label><input type="password" id="sy-pass" autocomplete="current-password" style="text-transform:none"></div>' +
+      '<div id="sy-msg" class="p-err" hidden></div>' +
+      '<div class="menu" style="margin-top:16px"><button class="btn primary" data-act="sync-signin"><span><b>Accedi</b></span></button>' +
+      '<button class="btn" data-act="sync-signup"><span><b>Crea il mio account</b><br><span class="small muted">Solo la prima volta</span></span></button>' +
+      '<button class="btn ghost" data-act="close">Annulla</button></div>' +
+      '<p class="small muted">I dati viaggiano cifrati e sono leggibili solo con il tuo account.</p>');
+  }
+
+  function syncAuth(kind) {
+    const email = ($("#sy-email") && $("#sy-email").value || "").trim();
+    const pass = ($("#sy-pass") && $("#sy-pass").value) || "";
+    const msg = $("#sy-msg");
+    const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } else toast(t); };
+    if (!email || pass.length < 8) return show("Scrivi l'email e una password di almeno 8 caratteri.");
+    show(kind === "signup" ? "Creo l'account…" : "Accedo…");
+    (kind === "signup" ? G.sync.signUp(email, pass) : G.sync.signIn(email, pass)).then(() => {
+      closeModal();
+      toast("Sincronizzazione attiva");
+      return syncNow(true);
+    }).catch((e) => show(/Invalid login/i.test(e.message) ? "Email o password non corrette." : e.message));
   }
 
   // Applica una modifica INTERNA, ripianifica, salva, ridisegna. Permette "Annulla".
@@ -413,6 +463,8 @@
     } else {
       html += timelineHTML(visible, t);
     }
+    const ar = state.appleRemote;
+    if (ar && ar.at && !G.apple.available() && t - ar.at > 3 * 3600000) html += '<p class="hidden-line">' + I.cloud + "Calendario e Promemoria letti dal Mac " + T.fmtDay(ar.at, t).toLowerCase() + " alle " + T.fmtHM(ar.at) + "</p>";
     const hidToday = hiddenList(T.dateKey(t));
     if (hidToday.length) html += '<p class="hidden-line">' + I.eyeOff + hidToday.length + (hidToday.length === 1 ? " elemento oscurato" : " elementi oscurati") + ' oggi · <button class="link small" data-act="hidden-menu">Mostra</button></p>';
 
@@ -1453,9 +1505,11 @@
         '<input type="checkbox" class="switch" data-set="notifications"' + (state.notifications ? " checked" : "") + (notifSupported ? "" : " disabled") + ' aria-label="Notifiche">') + "</div>";
 
     html += '<div class="sec"><h2>Privacy e dati</h2></div><div class="group">' +
-      row(I.shield, "green", "Tutto sul tuo dispositivo", "Nessun account, nessun servizio a pagamento, nessun dato inviato", "") +
+      (G.sync.status().signedIn && mode === "real"
+        ? row(I.shield, "green", "I tuoi dati", "Sul dispositivo e nel tuo spazio privato online (Supabase, gratuito), visibile solo con il tuo account", "")
+        : row(I.shield, "green", "Tutto sul tuo dispositivo", "Nessun account, nessun servizio a pagamento, nessun dato inviato", "")) +
       '<div class="g-row" data-act="hidden-menu" style="cursor:pointer"><span class="gi grey">' + I.eyeOff + '</span><div class="gt"><b>Elementi oscurati</b><span>Nascosti dal programma, non cancellati</span></div><span class="status">' + hiddenList().length + '</span><span class="chev">' + I.right + "</span></div>" +
-      row(I.cloud, "grey", "Sincronizzazione Mac ↔ iPhone", "Non ancora attiva. Per ora usa il backup per spostare i dati", '<span class="status">In arrivo</span>') + "</div>" +
+      syncRow() + "</div>" +
       '<div class="actions"><button class="btn small" data-act="export">' + I.down + "Scarica backup</button>" +
       '<label class="btn small" style="cursor:pointer">' + I.up + 'Ripristina<input type="file" accept="application/json,.json" data-set="import" hidden></label>' +
       (mode === "real" ? '<button class="btn small" data-act="restore-menu">Copie automatiche</button>' : "") +
@@ -1474,11 +1528,28 @@
     return html;
   }
 
+  function syncRow() {
+    if (mode === "demo") return '<div class="g-row"><span class="gi grey">' + I.cloud + '</span><div class="gt"><b>Sincronizzazione Mac ↔ iPhone</b><span>Non disponibile nella demo</span></div></div>';
+    const st = G.sync.status();
+    if (!st.signedIn) {
+      return '<div class="g-row"><span class="gi">' + I.cloud + '</span><div class="gt"><b>Sincronizzazione Mac ↔ iPhone</b><span>Gli stessi dati su Mac e iPhone, anche Calendario e Promemoria letti dal Mac</span></div>' +
+        '<button class="btn small primary" data-act="sync-open">Attiva</button></div>';
+    }
+    const sub = ui.syncing ? "Sincronizzo…" : st.error ? "Problema: " + esc(st.error) : st.lastSync ? "Aggiornata " + T.fmtDay(st.lastSync, now()).toLowerCase() + " alle " + T.fmtHM(st.lastSync) : "In attesa";
+    return '<div class="g-row"><span class="gi green">' + I.cloud + '</span><div class="gt"><b>Sincronizzazione attiva</b><span>' + esc(st.email || "") + " · " + sub + "</span></div>" +
+      '<button class="btn small" data-act="sync-now">Ora</button><button class="btn small ghost" data-act="sync-out">Esci</button></div>';
+  }
+
   // Riga di un collegamento Apple nelle Impostazioni
   function appleRow(kind, icon, title, value, stLbl) {
     const row = (sub, right) => '<div class="g-row"><span class="gi orange">' + icon + '</span><div class="gt"><b>' + title + "</b><span>" + sub + "</span></div>" + right + "</div>";
     if (mode === "demo") return row("Dati finti della demo", stLbl("demo"));
-    if (!G.apple.available()) return row(kind === "calendar" ? "Leggere gli appuntamenti" : "Leggere i promemoria e le scadenze", stLbl("off"));
+    if (!G.apple.available()) {
+      const r = state.appleRemote;
+      const on = r && (kind === "calendar" ? r.calendar : r.remindersOn);
+      if (on) return row("Letti dal Mac · aggiornati " + (r.at ? T.fmtDay(r.at, now()).toLowerCase() + " alle " + T.fmtHM(r.at) : "—"), '<span class="status on">Dal Mac</span>');
+      return row(kind === "calendar" ? "Leggere gli appuntamenti" : "Leggere i promemoria e le scadenze", stLbl("off"));
+    }
     const perm = (ui.appleStatus || {})[kind];
     if (value === "connected" && perm === "fullAccess") {
       const sync = state.appleSync || {};
@@ -1496,7 +1567,8 @@
 
   function appleFoot() {
     if (mode === "demo") return '<p class="g-foot">Nella demo gli elementi Apple sono finti. Esci dalla demo per collegare i tuoi.</p>';
-    if (!G.apple.available()) return '<p class="g-foot">Per collegarli apri Daily Schedule con l\'app per Mac («Daily Schedule» nella cartella Applicazioni). Dal browser e dall\'iPhone il Calendario del Mac non è raggiungibile.</p>';
+    if (!G.apple.available()) return '<p class="g-foot">' + (state.appleRemote ? "Calendario e Promemoria arrivano dall'app per Mac tramite la sincronizzazione: si aggiornano quando il Mac è acceso con Daily Schedule aperto." :
+      "Per collegarli apri Daily Schedule con l\'app per Mac («Daily Schedule» nella cartella Applicazioni). Sull'iPhone arrivano attivando la sincronizzazione su entrambi.") + "</p>";
     return '<p class="g-foot">Sola lettura: Daily Schedule non crea, non modifica e non cancella nulla in Calendario e Promemoria. ' +
       '<button class="link small" data-act="apple-sync">Aggiorna ora</button></p>';
   }
@@ -2042,6 +2114,11 @@
         }
         case "hide": hideItem(a.dataset.key, a.dataset.title); break;
         case "fix": closeModal(); fixSheet(a.dataset.key); break;
+        case "sync-open": syncSheet(); break;
+        case "sync-signin": syncAuth("signin"); break;
+        case "sync-signup": syncAuth("signup"); break;
+        case "sync-now": syncNow(true); break;
+        case "sync-out": if (confirm("Uscire dalla sincronizzazione? I dati restano su questo dispositivo.")) { G.sync.signOut(); render(); toast("Sincronizzazione disattivata"); } break;
         case "toast-edit": {
           const el = $("#toast"), ed = el._edit;
           el.hidden = true;
@@ -2273,6 +2350,10 @@
   } catch (e) { /* facoltativo */ }
   tick();
   setInterval(tick, 30000);
+  // Sincronizzazione: all'avvio, ogni minuto e quando l'app torna in primo piano
+  if (syncOn()) syncNow();
+  setInterval(() => syncNow(), 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncNow(); });
   // Daily Schedule per Mac: stato dei permessi, aggiornamento all'avvio, ogni 5 minuti e quando cambia qualcosa in Apple
   if (G.apple.available()) {
     appleRefreshStatus().then(() => { render(); appleSync(true); });

@@ -44,6 +44,8 @@ In questa versione legge soltanto: non modifica nulla in Calendario e Promemoria
 | `js/stats.js` | resoconto settimanale e serie delle routine |
 | `js/apple.js` | dati di Apple Calendar e Promemoria ricevuti dall'app per Mac |
 | `mac/` | app per Mac (Swift + EventKit) |
+| `js/sync.js` | sincronizzazione Mac ↔ iPhone (Supabase) |
+| `supabase/` | struttura del database e funzione dell'account |
 | `js/demo.js` | dati dimostrativi |
 | `js/app.js` | interfaccia: Oggi, Assistente, Calendario, Attività, Impostazioni |
 | `sw.js`, `manifest.webmanifest` | installazione come app e uso offline |
@@ -52,7 +54,8 @@ In questa versione legge soltanto: non modifica nulla in Calendario e Promemoria
 - **Reale:** attività e appuntamenti interni, routine quotidiane, oscuramento di eventi/promemoria, pianificazione, riorganizzazione,
   assistente locale, proposte e conferme, salvataggio sul dispositivo.
 - **Apple Calendar e Promemoria:** lettura reale tramite l'app per Mac; nella demo sono finti.
-- **Non ancora presente:** sincronizzazione Mac ↔ iPhone, notifiche ad app chiusa.
+- **Sincronizzazione:** Mac ↔ iPhone con account personale (Impostazioni → Sincronizzazione).
+- **Non ancora presente:** notifiche ad app chiusa, modifiche ai dati Apple da Daily Schedule.
 - **Costi:** nessuno. Niente API a pagamento.
 
 Font: Archivo (licenza SIL Open Font), incluso in `fonts/`.

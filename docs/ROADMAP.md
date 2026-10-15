@@ -50,5 +50,10 @@ Legenda: ✅ fatto · 🟡 in parte · ⬜ da fare
 ## Fase 7 — Backend e sincronizzazione
 - ⬜ Login, tabelle con RLS, sincronizzazione Mac ↔ iPhone, coda delle operazioni
 
+## Fase 7 — Sincronizzazione (fatta il 16/10/2026)
+- ✅ Account personale (uno solo) e sincronizzazione Mac ↔ iPhone via Supabase gratuito
+- ✅ Elemento per elemento, vince la modifica più recente, la prima volta si scarica prima di inviare
+- ✅ Calendario e Promemoria letti dal Mac arrivano anche sull'iPhone
+
 ## Fase 8 — Test e rifinitura
 - ⬜ Prova su iPhone reale, documentazione d'uso completa
