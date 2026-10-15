@@ -196,6 +196,37 @@
   pl = S.plan(real, NOW);
   ok(pl.blocks.some((b) => b.taskId === "ar:R9" && T.fmtHM(b.start) === "10:00" && !b.late), "Apple: promemoria delle 10 compare alle 10:00");
 
+  // promemoria: solo nel loro giorno
+  real = G.store.empty(); real.settings = S.defaultSettings();
+  AP.merge(real, { events: [], reminders: [
+    { id: "F1", title: "Pagare l'affitto", due: "2026-10-20", priority: 0 },
+    { id: "F2", title: "Rinnovare la patente", priority: 0 },
+    { id: "F3", title: "Chiamare la banca", due: "2026-10-13", priority: 0 },
+    { id: "F4", title: "Oggi", due: "2026-10-15", priority: 0 },
+  ] }, NOW);
+  pl = S.plan(real, NOW);
+  const dayOf = (id) => { const b = pl.blocks.find((x) => x.taskId === id); return b ? T.dateKey(b.start) : null; };
+  eq(dayOf("ar:F1"), "2026-10-20", "Apple: promemoria del 20 solo il 20, non oggi");
+  eq(dayOf("ar:F2"), null, "Apple: promemoria senza data non entra da solo nel programma");
+  ok(pl.info["ar:F2"].unplanned, "Apple: promemoria senza data = da pianificare");
+  eq(dayOf("ar:F3"), null, "Apple: promemoria scaduto non entra nella giornata");
+  ok(pl.warnings.some((w) => w.type === "overdue" && w.taskId === "ar:F3"), "Apple: promemoria scaduto segnalato");
+  eq(dayOf("ar:F4"), "2026-10-15", "Apple: promemoria di oggi oggi");
+  real.tasks.find((t) => t.id === "ar:F2").notBefore = "2026-10-17";
+  eq(S.plan(real, NOW).blocks.find((b) => b.taskId === "ar:F2") && T.dateKey(S.plan(real, NOW).blocks.find((b) => b.taskId === "ar:F2").start), "2026-10-17", "Apple: se scelgo io il giorno, vale la mia scelta");
+
+  // promemoria ripetuti rimasti indietro e orario dall'avviso
+  eq(AP.effectiveDue({ due: "2026-07-27", recurrence: { frequency: "daily", interval: 1 }, alarms: [{ at: "2026-07-27T10:00" }] }, NOW), "2026-10-15T10:00", "Apple: ogni giorno dal 27 luglio, avviso alle 10 → oggi alle 10");
+  eq(AP.effectiveDue({ due: "2026-10-02", recurrence: { frequency: "monthly", interval: 1 } }, NOW), "2026-11-02", "Apple: ogni mese dal 2 ottobre → 2 novembre");
+  eq(AP.effectiveDue({ due: "2026-10-12", recurrence: { frequency: "weekly", interval: 1 } }, NOW), "2026-10-19", "Apple: ogni lunedì → lunedì prossimo");
+  eq(AP.effectiveDue({ due: "2026-10-13", recurrence: { frequency: "weekly", interval: 1, daysOfWeek: [2, 4] } }, NOW), "2026-10-15", "Apple: mar e gio → oggi giovedì");
+  eq(AP.effectiveDue({ due: "2026-10-20", alarms: [{ offset: 9 * 3600 }] }, NOW), "2026-10-20T09:00", "Apple: avviso relativo alle 9");
+  eq(AP.effectiveDue({ due: "2026-10-01", recurrence: { frequency: "daily", interval: 1, until: "2026-10-10" } }, NOW), null, "Apple: ripetizione finita");
+  real = G.store.empty(); real.settings = S.defaultSettings();
+  AP.merge(real, { events: [], reminders: [{ id: "D1", title: "Integratori", due: "2026-07-27", hasTime: false, priority: 0, recurrence: { frequency: "daily", interval: 1 }, alarms: [{ at: "2026-07-27T10:00" }] }] }, NOW);
+  pl = S.plan(real, NOW);
+  ok(pl.blocks.some((b) => b.taskId === "ar:D1" && T.dateKey(b.start) === "2026-10-15" && T.fmtHM(b.start) === "10:00") && !pl.warnings.some((w) => w.type === "overdue"), "Apple: promemoria giornaliero oggi alle 10, non «scaduto»");
+
   print("");
   failures.forEach((f) => print("  ✗ " + f));
   print("Proposte e assistente: " + pass + " test superati, " + fail + " falliti");

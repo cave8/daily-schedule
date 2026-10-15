@@ -262,8 +262,17 @@
     }
     for (const k of Object.keys(capacity)) capacity[k] = Math.floor(capacity[k] * load);
 
+    // Promemoria con una data: vanno SOLO in quel giorno (se la data è passata, oggi, come scaduti).
+    // Se hai scelto tu un giorno ("non prima del"), vale la tua scelta.
+    function onDayOf(t) {
+      if (!t.onDay || !t.deadline || t.notBefore) return null;
+      return Math.max(today, T.startOfDay(deadlineMs(t.deadline) - 1));
+    }
+
     // Ordine di lavoro
     function sortKey(t) {
+      const od = onDayOf(t);
+      if (od != null) return od;
       // le routine (brevi, legate al loro giorno) prendono posto per prime nel loro momento preferito
       if (t.strictDay && t.notBefore) return T.startOfDay(T.fromISO(t.notBefore));
       const created = t.createdAt ? T.startOfDay(t.createdAt) : today;
@@ -272,7 +281,12 @@
       if (t.notBefore) k = Math.max(k, T.startOfDay(T.fromISO(t.notBefore)));
       return k;
     }
-    const toPlace = open.filter((t) => remaining[t.id] > 0);
+    // Promemoria senza data: non entrano da soli nel programma (finché non scegli tu un giorno)
+    const waiting = (t) => (t.noAuto && !t.notBefore && !t.pinnedStart) ||
+      // promemoria con una data già passata: restano fuori dalla giornata (sono segnalati come scaduti)
+      (t.onDay && t.deadline && !t.notBefore && T.startOfDay(deadlineMs(t.deadline) - 1) < today);
+    for (const t of open) if (waiting(t)) info[t.id] = { unplanned: true };
+    const toPlace = open.filter((t) => remaining[t.id] > 0 && !waiting(t));
     function ordered(boosted) {
       return toPlace.slice().sort((a, b) => {
         const ba = boosted.has(a.id), bb = boosted.has(b.id);
@@ -351,16 +365,17 @@
       const out = [], inf = {}, late = [], unscheduled = [], tightDays = new Set();
       for (const t of order) {
         const R = remaining[t.id];
+        const od = onDayOf(t);
         const notBefore = Math.max(nowC, t.notBefore ? T.fromISO(t.notBefore) : 0, t.snoozeUntil ? T.fromISO(t.snoozeUntil) : 0,
-          hiddenToday(t) ? tomorrow : 0);
-        const dl = deadlineMs(t.deadline);
+          hiddenToday(t) ? tomorrow : 0, od != null ? od : 0);
+        const dl = od != null ? T.addDays(od, 1) : deadlineMs(t.deadline);
         const split = t.splittable !== false;
         const passes = [];
         if (t.pref && PREF[t.pref]) passes.push({ pref: t.pref, limit: dl, cap: true });
         passes.push({ pref: null, limit: dl, cap: true });
         passes.push({ pref: null, limit: dl, cap: false, tight: true });
         // le routine restano nel loro giorno: se non c'è posto si saltano
-        if (dl !== Infinity && !t.strictDay) {
+        if (dl !== Infinity && !t.strictDay && od == null) {
           passes.push({ pref: null, limit: Infinity, cap: true, late: true });
           passes.push({ pref: null, limit: Infinity, cap: false, late: true, tight: true });
         }
@@ -389,7 +404,7 @@
     let boosted = new Set();
     let best = placeAll(ordered(boosted));
     for (let i = 0; i < 8; i++) {
-      const tryIds = best.late.concat(best.unscheduled.filter((id) => byId[id].deadline && !byId[id].strictDay)).filter((id) => !boosted.has(id));
+      const tryIds = best.late.concat(best.unscheduled.filter((id) => byId[id].deadline && !byId[id].strictDay && onDayOf(byId[id]) == null)).filter((id) => !boosted.has(id));
       if (!tryIds.length) break;
       const nb = new Set([...boosted, ...tryIds]);
       const r = placeAll(ordered(nb));
@@ -410,8 +425,9 @@
     for (const id of best.unscheduled) {
       const t = byId[id];
       info[id] = { unscheduled: true };
-      if (t.strictDay) {
-        if (t.occ === todayKey) warnings.push({ type: "routine", taskId: id, text: "Oggi non c'è spazio per «" + t.title + "»" });
+      if (t.strictDay || onDayOf(t) != null) {
+        const dayKey = t.strictDay ? t.occ : T.dateKey(onDayOf(t));
+        if (dayKey === todayKey) warnings.push({ type: "routine", taskId: id, text: "Oggi non c'è spazio per «" + t.title + "»" });
         continue;
       }
       warnings.push({ type: "unscheduled", taskId: id,

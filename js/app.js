@@ -415,7 +415,8 @@
     const hidToday = hiddenList(T.dateKey(t));
     if (hidToday.length) html += '<p class="hidden-line">' + I.eyeOff + hidToday.length + (hidToday.length === 1 ? " elemento oscurato" : " elementi oscurati") + ' oggi · <button class="link small" data-act="hidden-menu">Mostra</button></p>';
 
-    const top = state.tasks.filter((x) => !x.done && !x.routineId).sort((a, b) =>
+    const top = state.tasks.filter((x) => !x.done && !x.routineId && (
+      (state.plan.info[x.id] && state.plan.info[x.id].start < dayEnd) || (x.deadline && S.deadlineMs(x.deadline) <= dayEnd))).sort((a, b) =>
       ((a.priority || 2) - (b.priority || 2)) || (S.deadlineMs(a.deadline) - S.deadlineMs(b.deadline))).slice(0, 3);
     if (top.length) {
       html += '<div class="sec"><h2>Priorità</h2><button class="link" data-tab="attivita">Tutte</button></div><div class="card list-card"><ul class="list">' + top.map((x) => {
@@ -1162,7 +1163,8 @@
           if (inf.start) bits.push(T.fmtDay(inf.start, t, { short: true }).toLowerCase() + " " + T.fmtHM(inf.start) + (inf.chunks > 1 ? " (" + inf.chunks + " parti)" : ""));
           if (subProgress(x)) bits.push(subProgress(x));
           let tags = x.priority === 1 ? '<span class="tag high">alta</span>' : "";
-          if (inf.unscheduled) tags += '<span class="tag late">senza posto</span>';
+          if (inf.unplanned) tags += '<span class="tag pin">da pianificare</span>';
+          else if (inf.unscheduled) tags += '<span class="tag late">senza posto</span>';
           else if (overdue) tags += '<span class="tag late">scaduta</span>';
           else if (inf.late) tags += '<span class="tag late">in ritardo</span>';
           return '<li class="li" data-open="task:' + esc(x.id) + '"><button class="check" data-act="done" data-id="' + esc(x.id) + '" aria-label="Segna come fatta"></button>' +

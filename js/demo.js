@@ -33,9 +33,9 @@
       { id: "d-t2", area: "studio", title: "Studiare per l'esame", duration: 90, priority: 2, pref: "morning", deadline: key(5) },
       { id: "d-t3", area: "lavoro", title: "Rispondere alle email", duration: 30, priority: 2 },
       { id: "d-t4", area: "casa", title: "Fare la spesa", duration: 45, priority: 2, pref: "evening", deadline: key(0) },
-      { id: "d-t5", area: "lavoro", title: "Chiamare il commercialista", duration: 15, priority: 2, deadline: key(2), source: "apple-reminders", list: "Promemoria" },
-      { id: "d-t6", area: "casa", title: "Pagare la bolletta della luce", duration: 15, priority: 1, deadline: key(3), source: "apple-reminders", list: "Casa" },
-      { id: "d-t7", title: "Rinnovare l'abbonamento dei mezzi", duration: 20, priority: 3, source: "apple-reminders", list: "Promemoria" },
+      { id: "d-t5", area: "lavoro", title: "Chiamare il commercialista", duration: 15, priority: 2, deadline: key(2), onDay: true, source: "apple-reminders", list: "Promemoria" },
+      { id: "d-t6", area: "casa", title: "Pagare la bolletta della luce", duration: 15, priority: 1, deadline: key(3), onDay: true, source: "apple-reminders", list: "Casa" },
+      { id: "d-t7", title: "Rinnovare l'abbonamento dei mezzi", duration: 20, priority: 3, noAuto: true, source: "apple-reminders", list: "Promemoria" },
       { id: "d-t8", area: "sport", title: "Allenamento mattutino", duration: 30, actual: 35, priority: 2, done: true, doneAt: at(0, "07:30") },
     ].map((t) => Object.assign({ source: "internal", splittable: true, createdAt: created, done: false, remaining: t.duration },
       t.source && t.source !== "internal" ? apple(t.id) : {}, t));

@@ -123,7 +123,22 @@ final class AppleData {
             case .yearly: freq = "yearly"
             @unknown default: freq = "other"
             }
-            item["recurrence"] = ["frequency": freq, "interval": rule.interval]
+            var rec: [String: Any] = ["frequency": freq, "interval": rule.interval]
+            if let dw = rule.daysOfTheWeek, !dw.isEmpty { rec["daysOfWeek"] = dw.map { $0.dayOfTheWeek.rawValue - 1 } } // 0 = domenica
+            if let dm = rule.daysOfTheMonth, !dm.isEmpty { rec["daysOfMonth"] = dm.map { $0.intValue } }
+            if let end = rule.recurrenceEnd?.endDate { rec["until"] = day.string(from: end) }
+            item["recurrence"] = rec
+        }
+        // Avvisi: l'ora dell'avviso è spesso "l'orario" del promemoria
+        if let alarms = r.alarms, !alarms.isEmpty {
+            item["alarms"] = alarms.map { al -> [String: Any] in
+                var a: [String: Any] = [:]
+                if let d = al.absoluteDate { a["at"] = iso.string(from: d) } else { a["offset"] = al.relativeOffset }
+                return a
+            }
+        }
+        if let sc = r.startDateComponents, let d = Calendar.current.date(from: sc) {
+            item["start"] = (sc.hour != nil) ? iso.string(from: d) : day.string(from: d)
         }
         if let n = r.notes, !n.isEmpty { item["notes"] = String(n.prefix(1000)) }
         if let m = r.lastModifiedDate { item["externalModified"] = iso.string(from: m) }

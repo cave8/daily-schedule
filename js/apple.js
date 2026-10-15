@@ -60,11 +60,13 @@
         const id = "ar:" + r.id;
         seen.add(id);
         let t = state.tasks.find((x) => x.id === id);
-        // Promemoria con un orario (es. ogni giorno alle 10): compare a quell'ora nel programma.
-        // Senza orario: solo la scadenza del giorno, e l'orario lo suggerisce Daily Schedule.
-        const timed = !!(r.due && T.hasTime(r.due));
-        const appleFields = { title: r.title, deadline: r.due ? (timed ? r.due.split("T")[0] : r.due) : null,
-          pinnedStart: timed ? r.due : null, notes: r.notes || "", list: r.list || "",
+        // Quando va fatto: la data del promemoria (per quelli ripetuti, la prossima volta da oggi)
+        // e l'orario (quello del promemoria, oppure l'ora dell'avviso).
+        const when = effectiveDue(r, now);
+        const timed = !!(when && T.hasTime(when));
+        const appleFields = { title: r.title, deadline: when ? (timed ? when.split("T")[0] : when) : null,
+          pinnedStart: timed ? when : null, appleDue: r.due || null, notes: r.notes || "", list: r.list || "",
+          onDay: !!r.due, noAuto: !r.due,
           recurrence: r.recurrence || null, externalId: r.id, externalModified: r.externalModified || null };
         if (r.completed) {
           if (t && !t.done) { t.done = true; t.doneAt = r.completedAt || T.toISO(now); summary.completed++; }
@@ -90,6 +92,53 @@
     return summary;
   }
 
+  // Ora del giorno (minuti) di un promemoria: la sua, o quella del primo avviso
+  function timeOfDay(r) {
+    if (r.due && T.hasTime(r.due)) return T.hmToMin(r.due.split("T")[1]);
+    for (const al of r.alarms || []) {
+      if (al.at) return T.minOfDay(T.fromISO(al.at));
+      if (al.offset != null && r.due) {
+        const m = Math.round(al.offset / 60); // spostamento rispetto alla mezzanotte del giorno
+        if (m >= 0 && m < 1440) return m;
+      }
+    }
+    return null;
+  }
+
+  // Data effettiva: i promemoria ripetuti rimasti indietro si portano alla prossima volta da oggi
+  function effectiveDue(r, now) {
+    if (!r.due) return null;
+    const today = T.startOfDay(now);
+    let day = T.startOfDay(T.fromISO(r.due));
+    const rec = r.recurrence;
+    if (rec && day < today) {
+      const n = Math.max(1, rec.interval || 1);
+      const until = rec.until ? T.fromKey(rec.until) : Infinity;
+      let d = day, guard = 0;
+      const matches = (x) => {
+        const dt = new Date(x);
+        if (rec.frequency === "daily") return Math.round((x - day) / 86400000) % n === 0;
+        if (rec.frequency === "weekly") {
+          const days = rec.daysOfWeek && rec.daysOfWeek.length ? rec.daysOfWeek : [new Date(day).getDay()];
+          const weeks = Math.floor(Math.round((x - day) / 86400000) / 7);
+          return days.includes(dt.getDay()) && weeks % n === 0;
+        }
+        if (rec.frequency === "monthly") {
+          const dom = rec.daysOfMonth && rec.daysOfMonth.length ? rec.daysOfMonth : [new Date(day).getDate()];
+          const months = (dt.getFullYear() - new Date(day).getFullYear()) * 12 + dt.getMonth() - new Date(day).getMonth();
+          return dom.includes(dt.getDate()) && months % n === 0;
+        }
+        if (rec.frequency === "yearly") return dt.getMonth() === new Date(day).getMonth() && dt.getDate() === new Date(day).getDate();
+        return false;
+      };
+      for (d = today; guard < 800 && d < until; d = T.addDays(d, 1), guard++) if (matches(d)) break;
+      if (guard >= 800 || d >= until) return null;
+      day = d;
+    }
+    const tm = timeOfDay(r);
+    return tm != null ? T.toISO(T.atMin(day, tm)) : T.dateKey(day);
+  }
+
   function pick(o, keys) {
     const out = {};
     for (const k of keys) if (o[k] !== undefined) out[k] = o[k];
@@ -102,5 +151,5 @@
     if (kind === "reminders") state.tasks = state.tasks.filter((t) => t.source !== "apple-reminders");
   }
 
-  G.apple = { available, call, merge, forget, mapPriority };
+  G.apple = { available, call, merge, forget, mapPriority, effectiveDue };
 })(globalThis.G || (globalThis.G = {}));
