@@ -556,3 +556,101 @@ details.more summary::-webkit-details-marker { display: none; }
 .qp-ic .ic { width: 14px; height: 14px; }
 .qp-hint { margin-left: auto; color: var(--muted); font-size: 10.5px; white-space: nowrap; letter-spacing: .08em; }
 .menu .btn span { text-align: left; }
+
+/* =========================================================
+   VERSIONE COMPATTA (0.9.1): riquadri più piccoli, più spazio
+   ========================================================= */
+body { font-size: 14px; }
+main { padding: 0 16px 24px; }
+.top { padding: calc(8px + env(safe-area-inset-top)) 16px 6px; }
+.page-head { margin: 4px 0 12px; }
+h1 { font-size: 22px; }
+.eyebrow { font-size: 11px; }
+.sec { margin: 18px 0 8px; }
+.sec h2 { font-size: 12px; }
+.card { padding: 12px 14px; margin: 8px 0; border-radius: 16px; }
+.actions { margin-top: 10px; gap: 6px; }
+.btn { padding: 8px 13px; font-size: 12px; }
+.btn.small { padding: 6px 10px; font-size: 11px; }
+
+/* riepilogo */
+.summary { padding: 10px 14px; gap: 12px; }
+.ring, .ring svg { width: 44px; height: 44px; }
+.ring span { font-size: 11px; }
+.summary .headline { font-size: 13px; margin-bottom: 2px; }
+.summary .st { font-size: 12px; gap: 2px 12px; }
+
+/* adesso */
+.now { padding: 12px 14px; }
+.now .label { font-size: 10.5px; }
+.now .title { font-size: 17px; margin: 5px 0 2px; }
+.now .meta { font-size: 12.5px; }
+.now .next { margin-top: 10px; padding-top: 8px; font-size: 12px; }
+.progress { margin: 10px 0 2px; height: 4px; }
+.timer { font-size: 34px; margin: 4px 0 0; }
+.now.slim { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--surface); }
+.now.slim .label { flex: none; }
+.slim-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slim-text b { color: var(--ink); font-weight: 650; }
+
+/* avvisi e domande */
+.alert { padding: 8px 12px; font-size: 12.5px; margin: 6px 0; border-radius: 12px; }
+.checkin .q { font-size: 14px; }
+
+/* programma */
+.tl-item { grid-template-columns: 42px 16px 1fr; gap: 0 6px; }
+.tl-time { font-size: 12.5px; padding-top: 9px; }
+.tl-time small { font-size: 11px; }
+.tl-dot { margin-top: 12px; width: 10px; height: 10px; }
+.k-break .tl-dot { margin-top: 13px; }
+.tl-card { padding: 8px 10px 8px 12px; margin: 3px 0; border-radius: 12px; }
+.tl-title { font-size: 13px; }
+.tl-meta { font-size: 10.5px; margin-top: 2px; }
+.tl-gap { grid-template-columns: 42px 16px 1fr; gap: 0 6px; font-size: 11.5px; }
+.tl-gap span { padding: 3px 0; }
+.check { width: 22px; height: 22px; }
+.check.done::after { left: 6px; top: 2.5px; }
+.iconbtn { width: 28px; height: 28px; }
+
+/* elenchi */
+.li { padding: 9px 2px; gap: 10px; }
+.li .title { font-size: 13px; }
+.li .meta { font-size: 10.5px; }
+.list-card { padding: 2px 12px; }
+.g-row { padding: 9px 14px; min-height: 46px; gap: 10px; }
+.g-row .gt b { font-size: 13px; }
+.g-row .gt span { font-size: 11.5px; }
+.g-row .gi { width: 26px; height: 26px; }
+
+/* briefing, sera, settimana */
+.b-ic { width: 32px; height: 32px; border-radius: 10px; }
+.b-title { font-size: 13.5px; }
+.b-stats { margin: 10px 0 4px; gap: 6px; }
+.b-stats div { padding: 7px 9px; }
+.b-stats b { font-size: 15px; }
+.b-line { font-size: 12px; margin-top: 8px; }
+.b-label { margin: 10px 0 4px; }
+.b-list { font-size: 12.5px; gap: 4px; }
+.arealist { font-size: 11.5px; }
+.areabar { height: 9px; }
+
+/* chat */
+.msg { font-size: 13px; }
+
+/* pulsante + */
+.fab {
+  position: fixed; right: 18px; bottom: calc(var(--tabbar) + 16px + env(safe-area-inset-bottom)); z-index: 7;
+  width: 54px; height: 54px; border-radius: 50%; border: 0; background: var(--ink); color: #fff;
+  display: grid; place-items: center; box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+}
+.fab .ic { width: 26px; height: 26px; stroke-width: 2.2; }
+.fab:active { transform: scale(.94); }
+@media (min-width: 900px) { .fab { right: 28px; bottom: 28px; } }
+body.composer-on .content { padding-bottom: calc(var(--tabbar) + 90px + env(safe-area-inset-bottom)); }
+.content { padding-bottom: calc(var(--tabbar) + 84px + env(safe-area-inset-bottom)); }
+
+/* foglio Aggiungi */
+.qa-row { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 4px 4px 14px; }
+.qa-row input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 16px; padding: 9px 0; outline: none; }
+#qa-preview { margin: 10px 0 0; box-shadow: none; }
+.qa-alt { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }

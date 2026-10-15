@@ -117,6 +117,21 @@
   ok(app.state.proposals.find((x) => x.id === p.id).status === "applied" && app.state.tasks.find((t) => t.id === "d-t2").pref === "afternoon", "proposta applicata");
   ok(/Fatto ✓/.test(view()) && /verificato/.test(view()), "esito comunicato dopo la verifica");
 
+  // 4b. Pulsante + e foglio "Aggiungi" (la barra di testo resta solo nella chat)
+  click({ tab: "oggi" });
+  ok(els["#quick"].hidden === true && els["#fab"].hidden === false, "in Oggi: niente barra, c'è il pulsante +");
+  click({ tab: "assistente" });
+  ok(els["#quick"].hidden === false && els["#fab"].hidden === true, "nella chat: barra di testo, niente +");
+  click({ tab: "calendario" });
+  safe("apri +", () => click({ act: "add-sheet" }));
+  ok(/qa-form/.test(modal()) && /Attività/.test(modal()) && /Appuntamento/.test(modal()) && /Ogni giorno/.test(modal()), "foglio Aggiungi con scorciatoie");
+  document.querySelector("#qa-input").value = "Parrucchiere domani alle 9";
+  safe("aggiungi dal foglio", () => handlers.submit({ preventDefault() {}, target: { id: "qa-form" } }));
+  ok(app.state.events.some((e) => e.title === "Parrucchiere" && e.start.endsWith("T09:00")) && app.ui.tab === "calendario", "aggiunto dal foglio, senza cambiare schermata");
+  safe("scorciatoia attività", () => { click({ act: "add-sheet" }); click({ act: "new-task" }); });
+  ok(/task-form/.test(modal()), "scorciatoia apre il modulo attività");
+  click({ act: "close" });
+
   // 5. Modifica proposta = nuova proposta e nuova conferma
   safe("riunione spostata", () => say("La riunione è stata spostata di un'ora"));
   p = lastPending();

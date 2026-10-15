@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.9";
+  const APP_VERSION = "0.9.1";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -223,7 +223,9 @@
     if (mode === "demo") banner.innerHTML = "DATI DIMOSTRATIVI · niente di reale viene letto o modificato <button data-act=\"exit-demo\">Esci dalla demo</button>";
     document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === ui.tab));
     const showWelcome = !state.onboarded && mode === "real";
-    const composer = !showWelcome && ui.tab !== "impostazioni";
+    const composer = !showWelcome && ui.tab === "assistente";
+    const fab = $("#fab");
+    if (fab) fab.hidden = showWelcome || ui.tab === "assistente";
     $("#quick").hidden = !composer;
     if (document.body && document.body.classList) document.body.classList.toggle("composer-on", composer);
     const view = $("#view");
@@ -394,10 +396,8 @@
     }
     if (next) {
       const mins = Math.round((next.start - t) / MIN);
-      const startBtn = next.kind === "task"
-        ? '<div class="actions"><button class="btn primary" data-act="start" data-id="' + esc(next.taskId) + '">' + I.play + "Inizia ora</button></div>" : "";
-      return '<div class="card now"><div class="label"><i></i>Adesso</div><div class="title">Tempo libero</div>' +
-        '<div class="meta">' + (mins > 0 ? "Tra " + T.fmtDur(mins) + ": " : "Ora: ") + "<b>" + esc(next.title) + "</b>" + (next.suggested ? " (suggerito)" : "") + "</div>" + startBtn + "</div>";
+      return '<div class="card now slim"><span class="label"><i></i>Libero</span><span class="slim-text">' + (mins > 0 ? "tra " + T.fmtDurShort(mins) + ": " : "ora: ") + "<b>" + esc(next.title) + "</b></span>" +
+        (next.kind === "task" ? '<button class="btn small primary" data-act="start" data-id="' + esc(next.taskId) + '">' + I.play + "Inizia</button>" : "") + "</div>";
     }
     return "";
   }
@@ -1241,8 +1241,7 @@
         '<button data-act="cal-view" data-v="' + v + '" class="' + (c.view === v ? "on" : "") + '">' + l + "</button>").join("") + "</div>" +
       '<span class="spacer"></span><div class="navs"><button class="navbtn" data-act="cal-nav" data-d="-1" aria-label="Precedente">' + I.left + "</button>" +
       '<button class="btn small" data-act="cal-today">Oggi</button>' +
-      '<button class="navbtn" data-act="cal-nav" data-d="1" aria-label="Successivo">' + I.right + "</button>" +
-      '<button class="navbtn dark" data-act="add-menu" aria-label="Aggiungi">' + I.plus + "</button></div></div>" +
+      '<button class="navbtn" data-act="cal-nav" data-d="1" aria-label="Successivo">' + I.right + "</button></div></div>" +
       (c.view !== "month" ? '<p class="g-foot" style="margin:-4px 4px 10px">Tocca un\'ora libera per aggiungere un appuntamento.</p>' : "");
     if (pp) {
       html += '<div class="alert info">' + I.sparkle + '<span>Stai vedendo l\'<b>anteprima</b> di «' + esc(pp.proposal.summary || "") + '», non ancora applicata. ' +
@@ -1380,8 +1379,7 @@
     const titles = { tasks: "Attività", events: "Appuntamenti", routines: "Ogni giorno" };
     let html = '<div class="page-head"><div class="eyebrow">Elenco</div><h1>' + titles[ui.listTab] + "</h1></div>" +
       '<div class="toolbar"><div class="seg">' + [["tasks", "Attività"], ["routines", "Ogni giorno"], ["events", "Appuntamenti"]].map(([v, l]) =>
-        '<button data-act="list-tab" data-v="' + v + '" class="' + (ui.listTab === v ? "on" : "") + '">' + l + "</button>").join("") + '</div><span class="spacer"></span>' +
-      '<button class="btn small primary" data-act="' + ({ tasks: "new-task", events: "new-event", routines: "new-routine" }[ui.listTab]) + '">' + I.plus + "Nuova</button></div>";
+        '<button data-act="list-tab" data-v="' + v + '" class="' + (ui.listTab === v ? "on" : "") + '">' + l + "</button>").join("") + "</div></div>";
     if (ui.listTab === "routines") {
       html += renderRoutines();
     } else if (ui.listTab === "tasks") {
@@ -2063,6 +2061,7 @@
         case "imprevisto": imprevistoMenu(); break;
         case "imprevisto-go": addImprevisto(+a.dataset.min); break;
         case "imprevisto-day": addImprevisto("day"); break;
+        case "add-sheet": addSheet(); break;
         case "add-menu": openModal("<h2>Cosa vuoi aggiungere?</h2><div class=\"menu\">" +
           '<button class="btn" data-act="new-task">' + I.check + "<span><b>Un'attività</b><br><span class=\"small muted\">La sistemo io dove c'è tempo</span></span></button>" +
           '<button class="btn" data-act="new-event">' + I.calendar + "<span><b>Un appuntamento</b><br><span class=\"small muted\">A un orario preciso</span></span></button>" +
@@ -2144,7 +2143,7 @@
           break;
         }
         case "hidden-menu": hiddenMenu(); break;
-        case "new-routine": routineForm(G.routines.create({}, now()), true); break;
+        case "new-routine": closeModal(); routineForm(G.routines.create({}, now()), true); break;
         case "add-routine": {
           const c = G.routines.CATALOG.find((x) => x.key === a.dataset.key);
           if (c) commit((s) => s.routines.push(G.routines.create({ title: c.title, duration: c.duration, pref: c.pref || null, time: c.time || null }, now())),
@@ -2238,6 +2237,12 @@
       const box = $("#quick-preview"); if (box) { box.hidden = true; box.innerHTML = ""; }
       ask(v);
     }
+    if (e.target.id === "qa-form") {
+      const v = $("#qa-input").value;
+      if (!v.trim()) return;
+      closeModal();
+      ask(v);
+    }
     if (e.target.id === "task-form") saveTaskForm(e.target);
     if (e.target.id === "event-form") saveEventForm(e.target);
     if (e.target.id === "routine-form") saveRoutineForm(e.target);
@@ -2288,8 +2293,8 @@
   });
 
   // Anteprima di cosa ho capito, mentre scrivi
-  function quickPreview() {
-    const inp = $("#quick-input"), box = $("#quick-preview");
+  function quickPreview(inputSel, boxSel) {
+    const inp = $(inputSel || "#quick-input"), box = $(boxSel || "#quick-preview");
     if (!inp || !box) return;
     const v = inp.value.trim();
     if (v.length < 3) { box.hidden = true; box.innerHTML = ""; return; }
@@ -2313,7 +2318,23 @@
     box.innerHTML = html;
     box.hidden = false;
   }
-  document.addEventListener("input", (e) => { if (e.target && e.target.id === "quick-input") quickPreview(); });
+  document.addEventListener("input", (e) => {
+    if (e.target && e.target.id === "quick-input") quickPreview();
+    if (e.target && e.target.id === "qa-input") quickPreview("#qa-input", "#qa-preview");
+  });
+
+  // Foglio "Aggiungi" (pulsante +): una riga per scrivere, più le scorciatoie
+  function addSheet() {
+    openModal('<h2>Aggiungi</h2><form id="qa-form" autocomplete="off">' +
+      '<div class="qa-row"><input id="qa-input" type="text" enterkeyhint="done" placeholder="Es. Dentista domani alle 15" aria-label="Cosa vuoi aggiungere">' +
+      '<button type="submit" class="cbtn send" aria-label="Aggiungi">' + I.check + "</button></div>" +
+      '<div class="quick-preview" id="qa-preview" hidden></div></form>' +
+      '<div class="qa-alt"><button class="btn small" data-act="new-task">' + I.check + "Attività</button>" +
+      '<button class="btn small" data-act="new-event">' + I.calendar + "Appuntamento</button>" +
+      '<button class="btn small" data-act="new-routine">' + I.repeat + "Ogni giorno</button></div>");
+    const inp = $("#qa-input");
+    if (inp && inp.focus) setTimeout(() => inp.focus(), 50);
+  }
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("#modal").hidden) closeModal();
