@@ -6,6 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
+  const APP_VERSION = "0.8.1";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -1469,7 +1470,7 @@
     html += '<div class="sec"><h2>Installa</h2></div><div class="group">' +
       row(I.phone, "", "iPhone", "In Safari: Condividi, poi «Aggiungi alla schermata Home»", "") +
       row(I.laptop, "", "Mac", "In Safari: menu File, poi «Aggiungi al Dock»", "") + "</div>" +
-      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione 0.8</p>';
+      '<p class="small muted" style="text-align:center;margin-top:28px">Daily Schedule · versione ' + APP_VERSION + '</p>';
     return html;
   }
 
@@ -2247,9 +2248,29 @@
 
   // ---------------- avvio ----------------
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  // Aggiornamenti automatici: quando riapri l'app (anche dalla schermata Home dell'iPhone)
+  // controlla se c'è una versione nuova e, se sì, si ricarica da sola.
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Service worker non registrato", err));
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+      setInterval(check, 30 * 60000);
+    }).catch((err) => console.warn("Service worker non registrato", err));
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      // se stai compilando un modulo, aspetto che tu lo chiuda
+      const go = () => { if (!$("#modal").hidden) return setTimeout(go, 2000); save(); location.reload(); };
+      go();
+    });
   }
+  try {
+    const seen = localStorage.getItem("dailyschedule.version");
+    if (seen && seen !== APP_VERSION) setTimeout(() => toast("Aggiornata alla versione " + APP_VERSION), 800);
+    localStorage.setItem("dailyschedule.version", APP_VERSION);
+  } catch (e) { /* facoltativo */ }
   tick();
   setInterval(tick, 30000);
   // Daily Schedule per Mac: stato dei permessi, aggiornamento all'avvio, ogni 5 minuti e quando cambia qualcosa in Apple
