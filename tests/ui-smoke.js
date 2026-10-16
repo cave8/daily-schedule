@@ -1,5 +1,5 @@
 // Prova dell'interfaccia senza browser: simula la pagina, i tocchi e i moduli.
-/* global G, print, load */
+/* global G, print, load, drainMicrotasks */
 (function () {
   "use strict";
   let pass = 0, fail = 0;
@@ -96,14 +96,9 @@
   safe("richiesta", () => say("Domani devo studiare due ore, andare in palestra e fare la spesa"));
   ok(app.ui.tab === "oggi", "l'aggiunta non cambia schermata");
   ok(app.state.tasks.length === nTasks + 2, "attività aggiunte subito (senza doppioni)", app.state.tasks.length - nTasks);
-  ok(/Aggiunti 2 elementi/.test(document.querySelector("#toast").innerHTML) && /Annulla/.test(document.querySelector("#toast").innerHTML), "messaggio con Annulla");
-  safe("annulla aggiunta", () => click({ act: "undo" }));
-  ok(app.state.tasks.length === nTasks, "Annulla toglie le aggiunte");
+  ok(document.querySelector("#toast").hidden !== false || !/Aggiunt/.test(document.querySelector("#toast").innerHTML), "nessun messaggio in mezzo allo schermo");
   safe("una sola", () => say("Dentista venerdì alle 17"));
-  ok(app.state.events.some((e) => e.title === "Dentista" && e.start.endsWith("T17:00")) && /Modifica/.test(document.querySelector("#toast").innerHTML), "appuntamento aggiunto, con Modifica");
-  safe("modifica dal messaggio", () => click({ act: "toast-edit" }));
-  ok(/event-form/.test(modal()), "Modifica apre il modulo");
-  click({ act: "close" });
+  ok(app.state.events.some((e) => e.title === "Dentista" && e.start.endsWith("T17:00")), "appuntamento aggiunto subito");
   click({ tab: "assistente" });
   safe("aggiunta da assistente", () => say("Leggere il giornale 20 min"));
   ok(/Fatto ✓ Ho aggiunto/.test(view()) && app.state.tasks.some((t) => t.title === "Leggere il giornale"), "dall'assistente: aggiunto e spiegato");
@@ -168,7 +163,7 @@
 
   // 8. Promemoria Apple: completare = proposta; modulo Apple = proposta
   safe("check promemoria", () => click({ act: "done", id: "d-t5" }));
-  ok(!app.state.tasks.find((t) => t.id === "d-t5").done && lastPending() && lastPending().ops[0].type === "complete_task", "promemoria Apple: serve conferma");
+  ok(app.state.tasks.find((t) => t.id === "d-t5").done, "promemoria Apple spuntato: completato (nella demo, simulato)");
   safe("apri evento apple", () => click({ open: "event:d-e3:2026-10-16" }));
   ok(/Proponi modifica/.test(modal()) && !/delete-event/.test(modal()), "evento Apple: niente elimina, solo proposta");
   safe("proponi modifica evento", () => submit("event-form", { id: "d-e3", occ: "", mode: "edit" },
@@ -282,7 +277,7 @@
   const med = app.state.tasks.find((t) => t.routineId === "d-r1" && t.occ === G.time.dateKey(app.now()));
   if (med) {
     safe("routine fatta", () => click({ act: "done", id: med.id }));
-    ok(app.state.routineLog["d-r1"].includes(G.time.dateKey(app.now())) && /serie di 7 giorni/.test(document.querySelector("#toast").innerHTML), "serie aggiornata dopo una routine fatta");
+    ok(app.state.routineLog["d-r1"].includes(G.time.dateKey(app.now())) && G.stats.streak(app.state, app.state.routines.find((r) => r.id === "d-r1"), app.now()) === 7, "serie aggiornata dopo una routine fatta");
   }
 
   // 11. Torno ai dati reali: separati
@@ -358,6 +353,24 @@
   ok(/Falla oggi/.test(modal()) && /Spostala a domani/.test(modal()), "rimedi per un'attività scaduta");
   safe("falla oggi", () => click({ act: "fix-do", op: "plan-day", id: "old1", day: dk }));
   ok(app.state.tasks.find((t) => t.id === "old1").deadline === dk && !app.state.plan.warnings.some((w) => w.taskId === "old1" && w.type === "overdue"), "scaduta riprogrammata per oggi");
+
+  // 12c. Spuntare un promemoria Apple lo completa davvero in Promemoria (app per Mac simulata)
+  const calls = [];
+  globalThis.webkit = { messageHandlers: { apple: { postMessage: (m) => {
+    calls.push(m);
+    if (m.method === "completeReminder") return Promise.resolve({ ok: true, completed: true });
+    if (m.method === "fetch") return Promise.resolve({ events: [], reminders: [], status: { calendar: "fullAccess", reminders: "fullAccess" } });
+    return Promise.resolve({ calendar: "fullAccess", reminders: "fullAccess" });
+  } } } };
+  app.state.integrations = { calendar: "off", reminders: "off" };
+  G.apple.merge(app.state, { events: [], reminders: [{ id: "GPT", title: "ChatGPT", due: dk, priority: 0 }] }, app.now(), { calendar: false, reminders: true });
+  app.tick();
+  safe("spunta promemoria", () => { click({ act: "done", id: "ar:GPT" }); for (let i = 0; i < 50; i++) drainMicrotasks(); });
+  const gpt = app.state.tasks.find((t) => t.id === "ar:GPT");
+  ok(gpt.done && calls.some((c) => c.method === "completeReminder" && c.params.id === "GPT" && c.params.completed === true), "spunta → completato anche in Apple Promemoria");
+  ok(gpt.appleComplete === "done", "completamento confermato dall'app per Mac");
+  ok(!app.state.plan.blocks.some((b) => b.taskId === "ar:GPT"), "sparisce dal programma di oggi");
+  delete globalThis.webkit;
 
   // 13. Salvataggio
   const saved = JSON.parse(store["dailyschedule.real"]);

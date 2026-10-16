@@ -227,6 +227,22 @@
   pl = S.plan(real, NOW);
   ok(pl.blocks.some((b) => b.taskId === "ar:D1" && T.dateKey(b.start) === "2026-10-15" && T.fmtHM(b.start) === "10:00") && !pl.warnings.some((w) => w.type === "overdue"), "Apple: promemoria giornaliero oggi alle 10, non «scaduto»");
 
+  // completamento dei promemoria fatto in Daily Schedule
+  real = G.store.empty(); real.settings = S.defaultSettings();
+  const tdy = "2026-10-15", tmw = "2026-10-16";
+  AP.merge(real, { events: [], reminders: [{ id: "C1", title: "ChatGPT", due: tdy, priority: 0, recurrence: { frequency: "daily", interval: 1 } }] }, NOW);
+  let c1 = real.tasks.find((t) => t.id === "ar:C1");
+  c1.done = true; c1.doneAt = tdy + "T09:00"; c1.appleComplete = "pending";
+  AP.merge(real, { events: [], reminders: [{ id: "C1", title: "ChatGPT", due: tdy, priority: 0, recurrence: { frequency: "daily", interval: 1 } }] }, NOW);
+  ok(real.tasks.find((t) => t.id === "ar:C1").done, "Apple: in attesa del Mac il promemoria resta fatto (non torna indietro)");
+  c1 = real.tasks.find((t) => t.id === "ar:C1"); c1.appleComplete = "done";
+  AP.merge(real, { events: [], reminders: [{ id: "C1", title: "ChatGPT", due: tmw, priority: 0, recurrence: { frequency: "daily", interval: 1 } }] }, NOW);
+  const copy = real.tasks.find((t) => t.historyOf === "ar:C1");
+  c1 = real.tasks.find((t) => t.id === "ar:C1");
+  ok(copy && copy.done && !c1.done && c1.deadline === tmw, "Apple: ripetuto completato → copia fatta oggi, l'originale passa a domani");
+  pl = S.plan(real, NOW);
+  ok(!pl.blocks.some((b) => b.taskId === "ar:C1" && T.dateKey(b.start) === tdy), "Apple: dopo il completamento non è più nel programma di oggi");
+
   print("");
   failures.forEach((f) => print("  ✗ " + f));
   print("Proposte e assistente: " + pass + " test superati, " + fail + " falliti");

@@ -79,3 +79,11 @@ Nessuno. Niente API a pagamento. Servizi previsti, tutti con piano gratuito: Git
 - La pagina (`js/apple.js`) fonde i dati: gli identificativi Apple sono stabili (`ac:` eventi, `ar:` promemoria), quindi niente doppioni; area, durata stimata, passi e spostamenti aggiunti in Daily Schedule restano.
 - Quando cambia qualcosa in Calendario o Promemoria, macOS lo segnala e il programma si aggiorna da solo.
 - Autoverifica senza finestra: `DS_URL=http://localhost:8080/ "~/Applications/Daily Schedule.app/Contents/MacOS/DailySchedule" --selftest`.
+
+## Completare i promemoria (versione 0.10)
+- Spuntare un promemoria Apple in Daily Schedule è un'azione esplicita dell'utente su QUEL promemoria: vale come conferma
+  per quella singola operazione (decisione dell'utente, 16/10/2026). Le proposte dell'assistente restano con anteprima e conferma.
+- Unica scrittura permessa all'app per Mac: `completeReminder` (completa o riapre un promemoria). Dopo il salvataggio rilegge
+  il promemoria per verificare. Niente creazione, modifica o eliminazione di eventi e promemoria.
+- Dall'iPhone la spunta viene sincronizzata; il Mac la esegue appena è acceso (`appleComplete: "pending"` → `"done"`).
+- Firma dell'app per Mac: certificato locale fisso (`mac/setup-signing.sh`, portachiavi separato) così macOS ricorda i permessi tra un aggiornamento e l'altro.

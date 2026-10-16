@@ -15,8 +15,22 @@ for s in 16 32 128 256 512; do
 done
 cp ../icons/icon-512.png "$ICONSET/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET" -o "$OUT/Contents/Resources/AppIcon.icns"
-# firma locale (necessaria per i permessi di macOS)
-codesign --force --deep --sign - "$OUT"
+# firma: con il certificato fisso (setup-signing.sh) macOS ricorda i permessi anche dopo gli aggiornamenti
+KC="$HOME/Library/Application Support/DailyScheduleBuild/signing.keychain-db"
+if [ -f "$KC" ]; then
+  security unlock-keychain -p "daily-schedule-build" "$KC"
+  HASH=$(security find-identity -p codesigning "$KC" | awk '/Daily Schedule Local/ {print $2; exit}')
+  # il portachiavi dedicato entra nella lista solo per il tempo della firma, poi la lista torna com'era
+  ORIG=$(security list-keychains -d user | tr -d '"')
+  restore() { security list-keychains -d user -s $ORIG; }
+  trap restore EXIT
+  security list-keychains -d user -s $ORIG "$KC"
+  codesign --force --deep --sign "$HASH" "$OUT"
+  restore
+  trap - EXIT
+else
+  codesign --force --deep --sign - "$OUT"
+fi
 mkdir -p "$HOME/Applications"
 rm -rf "$HOME/Applications/Daily Schedule.app"
 cp -R "$OUT" "$HOME/Applications/"

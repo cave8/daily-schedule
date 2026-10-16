@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.9.3";
+  const APP_VERSION = "0.10";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -90,7 +90,7 @@
   }
 
   function save() {
-    if (!ST.save(state, mode)) toast("Attenzione: non riesco a salvare (spazio pieno?)");
+    if (!ST.save(state, mode)) toast("Attenzione: non riesco a salvare (spazio pieno?)", null, null, true);
     scheduleSync();
   }
 
@@ -107,13 +107,13 @@
     ui.syncing = true;
     return G.sync.sync(state).then((r) => {
       ui.syncing = false;
-      if (r && r.changed) { cleanCheckins(); replan(); ST.save(state, mode); }
+      if (r && r.changed) { cleanCheckins(); replan(); ST.save(state, mode); processAppleCommands(); }
       if (r && r.changed || manual || ui.tab === "impostazioni") render();
       if (manual) toast("Sincronizzato");
     }).catch((e) => {
       ui.syncing = false;
       if (manual || ui.tab === "impostazioni") render();
-      if (manual) toast("Sincronizzazione non riuscita: " + e.message);
+      if (manual) toast("Sincronizzazione non riuscita: " + e.message, null, null, true);
     });
   }
 
@@ -714,7 +714,7 @@
     const p = state.proposals.find((x) => x.id === pid);
     if (!p || p.status !== "pending") return;
     const editable = p.ops.map((o, i) => i).filter((i) => p.ops[i].type !== "complete_task");
-    if (!editable.length) { toast("Questa proposta si può solo confermare o annullare"); return; }
+    if (!editable.length) { toast("Questa proposta si può solo confermare o annullare", null, null, true); return; }
     if (editable.length === 1) { editOp(pid, editable[0]); return; }
     ui.editingProposal = pid;
     render();
@@ -778,7 +778,7 @@
 
   function fixSheet(key) {
     const w = findWarning(key);
-    if (!w) { toast("Questo avviso non c'è più"); return; }
+    if (!w) { toast("Questo avviso non c'è più", null, null, true); return; }
     const t = now();
     const buf = (state.settings.buffer || 0) * MIN;
     let title = "Sistemiamo", intro = esc(w.text), opts = [];
@@ -821,7 +821,7 @@
       }
     } else if (w.type === "overdue" || w.type === "late" || w.type === "unscheduled" || w.type === "routine") {
       const tk = taskById(w.taskId);
-      if (!tk) { toast("Attività non trovata"); return; }
+      if (!tk) { toast("Attività non trovata", null, null, true); return; }
       title = w.type === "overdue" ? "Attività scaduta" : w.type === "late" ? "Non ci sta prima della scadenza" : "Non trova posto";
       body = '<div class="group" style="margin-bottom:14px"><div class="g-row"><span class="gi' + (isApple(tk.source) ? " orange" : "") + '">' + I.check + '</span><div class="gt"><b>' + esc(tk.title) + "</b><span>" +
         T.fmtDur(S.taskRemaining(tk)) + (tk.deadline ? " · scadenza " + fmtDeadline(tk.deadline, t) : "") + "</span></div></div></div>";
@@ -922,6 +922,7 @@
     const last = (state.appleSync && state.appleSync.at) || 0;
     if (!force && now() - last < 5 * 60000) return;
     appleBusy = true;
+    processAppleCommands().catch(() => {});
     G.apple.call("fetch", { days: (state.settings.horizonDays || 14) + 7, calendar: cal, reminders: rem }).then((data) => {
       appleBusy = false;
       if (data && data.status) ui.appleStatus = data.status;
@@ -939,6 +940,35 @@
     });
   }
 
+  // Richieste verso Apple Promemoria in attesa (fatte su questo dispositivo o arrivate dall'iPhone)
+  let appleCmdBusy = false;
+  function processAppleCommands() {
+    if (mode !== "real" || !G.apple.available() || appleCmdBusy) return Promise.resolve(false);
+    const todo = state.tasks.filter((t) => t.source === "apple-reminders" && t.appleComplete === "pending" && t.externalId);
+    if (!todo.length) return Promise.resolve(false);
+    appleCmdBusy = true;
+    let chain = Promise.resolve();
+    let did = false;
+    for (const t of todo) {
+      chain = chain.then(() => G.apple.call("completeReminder", { id: t.externalId, completed: true }).then((r) => {
+        const x = taskById(t.id);
+        if (!x) return;
+        if (r && r.ok) { x.appleComplete = "done"; x.appleError = null; did = true; }
+        else { x.appleError = (r && r.error) || "non riuscito"; }
+      }).catch((e) => {
+        const x = taskById(t.id);
+        if (x) x.appleError = e.message || String(e);
+        toast("Non riesco a completare «" + t.title + "» in Promemoria: " + (e.message || e), null, null, true);
+      }));
+    }
+    return chain.then(() => {
+      appleCmdBusy = false;
+      save(); render();
+      if (did) appleSync(true);
+      return did;
+    });
+  }
+
   function appleConnect(kind) {
     G.apple.call("requestAccess", { kind }).then((st) => {
       ui.appleStatus = st;
@@ -949,9 +979,9 @@
         appleSync(true);
       } else {
         render();
-        toast("Permesso non concesso: nessun dato letto");
+        toast("Permesso non concesso: nessun dato letto", null, null, true);
       }
-    }).catch(() => toast("Non riesco a parlare con l'app per Mac"));
+    }).catch(() => toast("Non riesco a parlare con l'app per Mac", null, null, true));
   }
 
   // ---------------- Oscurare (nascondere senza cancellare) ----------------
@@ -1806,7 +1836,7 @@
       for (const k of Object.keys(after)) if (!PR.touchesApple(Object.assign({}, op, { after: { [k]: after[k] } }))) internal[k] = after[k];
       const blocked = Object.keys(after).length - Object.keys(internal).length;
       if (Object.keys(internal).length) commit((s) => Object.assign((type === "update_event" ? s.events : s.tasks).find((x) => x.id === item.id), internal), null);
-      toast(blocked ? "Ho salvato le tue note. Titolo, orari e scadenze si cambiano dall'app " + (type === "update_event" ? "Calendario" : "Promemoria") + " (da qui in un prossimo aggiornamento)." : "Salvato");
+      toast(blocked ? "Ho salvato le tue note. Titolo, orari e scadenze si cambiano dall'app " + (type === "update_event" ? "Calendario" : "Promemoria") + " (da qui in un prossimo aggiornamento)." : "Salvato", null, null, blocked > 0);
       return;
     }
     const p = newProposal([op], { summary, reason: "Modifica fatta da te nel modulo." });
@@ -1820,18 +1850,9 @@
     const t = taskById(id);
     if (!t) return;
     closeModal();
-    if (isApple(t.source) && mode === "real") {
-      toast("Segnalo come completato nell'app Promemoria: qui si aggiorna da solo. Intanto puoi oscurarlo per oggi.");
-      return;
-    }
-    if (isApple(t.source)) {
-      // completare un promemoria Apple modifica un dato Apple: serve conferma
-      const p = newProposal([PR.op(state, "complete_task", { targetId: id })], { summary: "Completare «" + t.title + "» in Apple Promemoria", reason: "L'hai segnato come fatto." });
-      addMsg({ role: "assistant", text: "«" + t.title + "» è un promemoria Apple: lo segno come completato solo se confermi.", proposalId: p.id });
-      ui.tab = "assistente"; rememberTab();
-      save(); render(); scrollChatEnd();
-      return;
-    }
+    // Spuntare un promemoria Apple è una richiesta esplicita dell'utente per QUEL promemoria:
+    // lo segno fatto qui e lo completo anche in Apple Promemoria (dal Mac; dall'iPhone appena il Mac è acceso).
+    const appleReal = t.source === "apple-reminders" && mode === "real";
     const snap = commit((s) => {
       const x = s.tasks.find((y) => y.id === id);
       if (s.focus && s.focus.taskId === id) {
@@ -1839,9 +1860,12 @@
         s.focus = null;
       }
       if (x.spent) x.actual = x.spent;
-      x.done = true; x.doneAt = T.toISO(now()); x.pinnedStart = null;
+      x.done = true; x.doneAt = T.toISO(now());
+      if (!isApple(x.source)) x.pinnedStart = null;
+      if (appleReal) { x.appleComplete = "pending"; x.appleError = null; }
       G.routines.logDone(s, x, true);
     }, null);
+    if (appleReal) processAppleCommands();
     let msg = "«" + t.title + "» fatta ✓";
     if (t.routineId) {
       const r = state.routines.find((y) => y.id === t.routineId);
@@ -1954,7 +1978,10 @@
 
   // ---------------- messaggi ----------------
   let toastTimer = null;
-  function toast(msg, undoSnapshot, edit) {
+  // Messaggi: si mostrano SOLO quelli importanti (errori, cose non riuscite). Le conferme normali
+  // ("aggiunto", "salvato"...) non compaiono: si vede direttamente il risultato nella pagina.
+  function toast(msg, undoSnapshot, edit, important) {
+    if (!important) return;
     const el = $("#toast");
     el.innerHTML = "<span>" + esc(msg) + "</span>" + (edit ? '<button data-act="toast-edit">Modifica</button>' : "") + (undoSnapshot ? '<button data-act="undo">Annulla</button>' : "");
     el.hidden = false;

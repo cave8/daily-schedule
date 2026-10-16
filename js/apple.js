@@ -79,14 +79,23 @@
             priority: mapPriority(r.priority), splittable: dur > 30, area: G.areas ? G.areas.guess(r.title) : null };
           state.tasks.push(t);
         } else if (t.done) {
-          t.done = false; t.doneAt = null; // riaperto in Promemoria
+          if (t.appleComplete === "pending") { summary.reminders++; continue; } // in attesa che il Mac lo completi in Apple
+          if (r.recurrence && r.due && r.due !== t.appleDue && t.appleDue) {
+            // promemoria ripetuto completato: resta una copia "fatta" per oggi, l'originale passa alla volta successiva
+            const copyId = t.id + "@fatto@" + t.appleDue;
+            if (!state.tasks.some((x) => x.id === copyId)) {
+              state.tasks.push(Object.assign({}, t, { id: copyId, historyOf: t.id, appleComplete: "done", onDay: false, noAuto: false }));
+            }
+          }
+          t.done = false; t.doneAt = null; t.appleComplete = null; t.spent = 0; t.actual = null; // di nuovo da fare
+          t.remaining = t.duration;
         }
         Object.assign(t, appleFields);
         summary.reminders++;
       }
       // Promemoria che non arrivano più (eliminati in Apple): tolti dalla copia locale
       const before = state.tasks.length;
-      state.tasks = state.tasks.filter((x) => x.source !== "apple-reminders" || x.done || seen.has(x.id));
+      state.tasks = state.tasks.filter((x) => x.source !== "apple-reminders" || x.done || x.historyOf || seen.has(x.id) || x.appleComplete === "pending");
       summary.removed += before - state.tasks.length;
     }
     return summary;

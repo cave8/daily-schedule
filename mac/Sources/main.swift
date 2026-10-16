@@ -30,8 +30,9 @@ final class AppleData {
         return [
             "calendar": AppleData.statusName(EKEventStore.authorizationStatus(for: .event)),
             "reminders": AppleData.statusName(EKEventStore.authorizationStatus(for: .reminder)),
-            "readOnly": true,
-            "version": "0.1",
+            "readOnly": false,
+            "writes": ["completeReminder"],
+            "version": "0.2",
         ]
     }
 
@@ -197,8 +198,30 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
             } else {
                 replyHandler(["events": events, "reminders": [], "status": data.status()], nil)
             }
+        case "completeReminder":
+            // Unica scrittura permessa: completare (o riaprire) UN promemoria che l'utente ha spuntato.
+            guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else { replyHandler(nil, "permesso Promemoria mancante"); return }
+            guard let id = params["id"] as? String, let r = data.store.calendarItem(withIdentifier: id) as? EKReminder else {
+                replyHandler(["ok": false, "error": "promemoria non trovato (forse eliminato)"], nil); return
+            }
+            let completed = params["completed"] as? Bool ?? true
+            if r.isCompleted == completed { replyHandler(["ok": true, "already": true], nil); return } // già fatto: niente doppioni
+            let dueBefore = r.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+            r.isCompleted = completed
+            do { try data.store.save(r, commit: true) } catch {
+                replyHandler(["ok": false, "error": "non salvato: \(error.localizedDescription)"], nil); return
+            }
+            // Verifica: rileggo il promemoria da Apple
+            data.store.refreshSourcesIfNecessary()
+            let check = data.store.calendarItem(withIdentifier: id) as? EKReminder
+            let dueAfter = check?.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+            let advanced = r.hasRecurrenceRules && dueBefore != nil && dueAfter != nil && dueAfter! > dueBefore!
+            let ok = completed ? (check == nil || check!.isCompleted || advanced) : (check?.isCompleted == false)
+            var res: [String: Any] = ["ok": ok, "completed": check?.isCompleted ?? completed, "advanced": advanced]
+            if !ok { res["error"] = "verifica non riuscita" }
+            replyHandler(res, nil)
         default:
-            // Nessuna operazione di scrittura in questa versione
+            // Nessun'altra operazione di scrittura: niente creazione, modifica o eliminazione
             replyHandler(nil, "operazione non disponibile: «\(method)»")
         }
     }
