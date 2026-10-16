@@ -135,6 +135,13 @@
     handlers.submit({ preventDefault() {}, target: { id: "qa-form" } });
   });
   ok(app.state.events.some((e) => e.title === "Palestra serale" && e.start === tmwKey + "T18:00" && e.end === tmwKey + "T19:30"), "appuntamento in 4 tocchi: domani 18:00–19:30");
+  safe("anteprima orario scelto", () => {
+    click({ act: "add-sheet" });
+    document.querySelector("#qa-input").value = "Sistemare la scrivania";
+    handlers.input({ target: { id: "qa-input" } });
+  });
+  ok(/la metto (oggi|domani|[a-zì]+ \d+ [a-z]+) alle \d\d:\d\d/.test(document.querySelector("#qa-preview").innerHTML), "prima di aggiungere mostra quando la mette", document.querySelector("#qa-preview").innerHTML);
+  click({ act: "close" });
   safe("veloce senza ora", () => {
     click({ act: "add-sheet" });
     document.querySelector("#qa-input").value = "Comprare il pane";

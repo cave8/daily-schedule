@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.11";
+  const APP_VERSION = "0.11.1";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -312,7 +312,8 @@
       return '<li class="tl-item k-travel' + (past ? " past" : "") + '"><div class="tl-time">' + T.fmtHM(b.start) + '</div><div class="tl-rail"><span class="tl-dot"></span></div>' +
         '<div class="tl-card"><div class="tl-body"><div class="tl-title">' + I.car + esc(b.title) + '</div><div class="tl-meta">' + T.fmtDur((b.end - b.start) / MIN) + (b.location ? " · " + esc(b.location) : "") + "</div></div></div></li>";
     }
-    const cls = ["tl-item", "k-" + b.kind, past ? "past" : "", current && b.kind !== "break" ? "current" : "",
+    const fresh = ui.fresh && ui.fresh.until > now() && ui.fresh.ids.includes(b.kind === "task" ? b.taskId : b.eventId);
+    const cls = ["tl-item", "k-" + b.kind, past ? "past" : "", current && b.kind !== "break" ? "current" : "", fresh ? "fresh" : "",
       b.suggested ? "sugg" : "", isApple(b.source) && b.kind === "event" ? "src-apple" : ""].join(" ");
     const check = b.kind === "task" && !(opts && opts.noCheck)
       ? '<button class="check" data-act="done" data-id="' + esc(b.taskId) + '" aria-label="Segna come fatta"></button>' : "";
@@ -629,6 +630,7 @@
       else { item.exceptions = item.exceptions || []; state.events.push(item); }
       added.push({ type: o.type, id: item.id });
     }
+    ui.fresh = { ids: added.map((x) => x.id), until: now() + 4000 };
     replan(); save();
     const lines = added.map((x) => addedLine(x.type, x.id));
     const est = (r.text.match(/Durate stimate[^\n]*/) || [""])[0];
@@ -2473,7 +2475,7 @@
     const dur = q.dur || (q.time ? 60 : A.estimate(q.title));
     box.innerHTML = q.time
       ? I.calendar + " <b>" + esc(q.title) + "</b> · " + (dayTxt || "oggi") + " " + q.time + "–" + T.fmtHM(T.atMin(T.startOfDay(t), T.hmToMin(q.time) + dur)) + (q.repeat ? " · si ripete" : "")
-      : I.check + " <b>" + esc(q.title) + "</b> · " + T.fmtDur(dur) + (dayTxt ? " · " + dayTxt : " · quando c'è tempo") + (q.deadline ? " · entro " + fmtDeadline(q.deadline, t) : "");
+      : I.check + " <b>" + esc(q.title) + "</b> · " + T.fmtDur(dur) + qaWhere(q, dur);
   }
 
   // aggiorna anche i pulsanti scelti in base alla frase (es. "domani alle 18")
@@ -2489,6 +2491,19 @@
       if (!qa.touched.dur) qa.dur = save.dur;
     }
     qaRefresh();
+  }
+
+  // Dove la metterei: simulo l'aggiunta e chiedo al pianificatore
+  function qaWhere(q, dur) {
+    try {
+      const t = now();
+      const tmp = { id: "__qa__", title: q.title, duration: dur, remaining: dur, priority: q.priority || 2, notBefore: q.day || null,
+        deadline: q.deadline || q.day || null, pref: q.pref, splittable: dur > 30, source: "internal", createdAt: T.toISO(t) };
+      const sim = Object.assign({}, state, { tasks: state.tasks.concat([tmp]) });
+      const inf = S.plan(sim, t).info.__qa__ || {};
+      if (inf.start) return ' · <span class="qa-when">la metto ' + T.fmtDay(inf.start, t).toLowerCase() + " alle " + T.fmtHM(inf.start) + "</span>";
+      return " · non trovo spazio" + (q.day ? " quel giorno" : "");
+    } catch (e) { return ""; }
   }
 
   function qaSubmit() {
