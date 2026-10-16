@@ -711,3 +711,17 @@ details.more[open] summary::after { content: " ⌄"; }
 .daypick-wrap { margin: -2px 0 10px; }
 .daypick-wrap .hint { margin: 4px 2px 0; }
 .daypick button { min-width: 44px; padding: 6px 10px; font-size: 12px; }
+
+/* ---------- Aggiunta veloce (0.11) ---------- */
+#qa-form .big-title { margin-bottom: 6px; }
+.qa-line { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.qa-line:last-child { border-bottom: 0; }
+.qa-lbl { width: 66px; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); }
+.qa-line .chips { flex: 1; min-width: 0; padding: 0; margin: 0; flex-wrap: nowrap; overflow-x: auto; }
+.chipdate { position: relative; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 11px; font-size: 12px; white-space: nowrap; cursor: pointer; flex: none; }
+.chipdate.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.chipdate .ic { width: 14px; height: 14px; }
+.chipdate input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.qa-summary { margin: 12px 0 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-size: 12.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 42px; }
+.qa-summary .ic { width: 15px; height: 15px; color: var(--accent); }
+.qa-line .chips { flex-wrap: wrap; overflow: visible; row-gap: 6px; }

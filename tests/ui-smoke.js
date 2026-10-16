@@ -119,12 +119,32 @@
   ok(els["#quick"].hidden === false && els["#fab"].hidden === true, "nella chat: barra di testo, niente +");
   click({ tab: "calendario" });
   safe("apri +", () => click({ act: "add-sheet" }));
-  ok(/qa-form/.test(modal()) && /Attività/.test(modal()) && /Appuntamento/.test(modal()) && /Ogni giorno/.test(modal()), "foglio Aggiungi con scorciatoie");
+  ok(/qa-form/.test(modal()) && /Quando/.test(modal()) && /Ora/.test(modal()) && /Durata/.test(modal()) && /Più dettagli/.test(modal()), "foglio Aggiungi veloce");
   document.querySelector("#qa-input").value = "Parrucchiere domani alle 9";
   safe("aggiungi dal foglio", () => handlers.submit({ preventDefault() {}, target: { id: "qa-form" } }));
   ok(app.state.events.some((e) => e.title === "Parrucchiere" && e.start.endsWith("T09:00")) && app.ui.tab === "calendario", "aggiunto dal foglio, senza cambiare schermata");
-  safe("scorciatoia attività", () => { click({ act: "add-sheet" }); click({ act: "new-task" }); });
-  ok(/task-form/.test(modal()), "scorciatoia apre il modulo attività");
+  // a tocchi: cosa + domani + ora + durata
+  const tmwKey = G.time.dateKey(G.time.addDays(G.time.startOfDay(app.now()), 1));
+  safe("veloce a tocchi", () => {
+    click({ act: "add-sheet" });
+    document.querySelector("#qa-input").value = "Palestra serale";
+    handlers.input({ target: { id: "qa-input" } });
+    click({ act: "qa-day", v: tmwKey });
+    handlers.change({ target: { dataset: { set: "qa-time" }, value: "18:00" } });
+    click({ act: "qa-dur", v: "90" });
+    handlers.submit({ preventDefault() {}, target: { id: "qa-form" } });
+  });
+  ok(app.state.events.some((e) => e.title === "Palestra serale" && e.start === tmwKey + "T18:00" && e.end === tmwKey + "T19:30"), "appuntamento in 4 tocchi: domani 18:00–19:30");
+  safe("veloce senza ora", () => {
+    click({ act: "add-sheet" });
+    document.querySelector("#qa-input").value = "Comprare il pane";
+    click({ act: "qa-day", v: tmwKey });
+    handlers.submit({ preventDefault() {}, target: { id: "qa-form" } });
+  });
+  const pane = app.state.tasks.find((t) => t.title === "Comprare il pane");
+  ok(pane && pane.notBefore === tmwKey && !app.state.events.some((e) => e.title === "Comprare il pane"), "senza ora: attività per domani, la sistemo io");
+  safe("più dettagli", () => { click({ act: "add-sheet" }); document.querySelector("#qa-input").value = "Riunione alle 11"; click({ act: "qa-more" }); });
+  ok(/event-form/.test(modal()) && /Riunione/.test(modal()), "«Più dettagli» apre il modulo completo già compilato");
   click({ act: "close" });
 
   // 5. Modifica proposta = nuova proposta e nuova conferma

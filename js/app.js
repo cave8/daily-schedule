@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.10.1";
+  const APP_VERSION = "0.11";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -2126,6 +2126,19 @@
         case "imprevisto-go": addImprevisto(+a.dataset.min); break;
         case "imprevisto-day": addImprevisto("day"); break;
         case "add-sheet": addSheet(); break;
+        case "qa-day": qa.day = a.dataset.v; qa.touched.day = true; qaRefreshAll(); break;
+        case "qa-time": qa.time = a.dataset.v; qa.touched.time = true; qaRefreshAll(); break;
+        case "qa-dur": qa.dur = +a.dataset.v; qa.touched.dur = true; qaRefreshAll(); break;
+        case "qa-more": {
+          const q = qaParse();
+          closeModal();
+          if (q.time) {
+            const day = q.day || T.dateKey(now());
+            const st = T.atMin(T.fromKey(day), T.hmToMin(q.time));
+            eventForm(newEventDraft({ title: q.title, start: T.toISO(st), end: T.toISO(st + (q.dur || 60) * MIN) }), "new");
+          } else taskForm(newTaskDraft({ title: q.title, duration: q.dur || state.settings.defaultDuration || 30, remaining: q.dur || state.settings.defaultDuration || 30, notBefore: q.day || null }), "new");
+          break;
+        }
         case "add-menu": openModal("<h2>Cosa vuoi aggiungere?</h2><div class=\"menu\">" +
           '<button class="btn" data-act="new-task">' + I.check + "<span><b>Un'attività</b><br><span class=\"small muted\">La sistemo io dove c'è tempo</span></span></button>" +
           '<button class="btn" data-act="new-event">' + I.calendar + "<span><b>Un appuntamento</b><br><span class=\"small muted\">A un orario preciso</span></span></button>" +
@@ -2312,12 +2325,7 @@
       const box = $("#quick-preview"); if (box) { box.hidden = true; box.innerHTML = ""; }
       ask(v);
     }
-    if (e.target.id === "qa-form") {
-      const v = $("#qa-input").value;
-      if (!v.trim()) return;
-      closeModal();
-      ask(v);
-    }
+    if (e.target.id === "qa-form") qaSubmit();
     if (e.target.id === "task-form") saveTaskForm(e.target);
     if (e.target.id === "event-form") saveEventForm(e.target);
     if (e.target.id === "routine-form") saveRoutineForm(e.target);
@@ -2346,6 +2354,8 @@
       } else commit((s) => { s.notifications = el.checked; });
       return;
     }
+    if (set === "qa-date") { qa.day = el.value || ""; qa.touched.day = true; qaRefreshAll(); return; }
+    if (set === "qa-time") { qa.time = el.value || ""; qa.touched.time = true; qaRefreshAll(); return; }
     if (set === "ev-repeat") { const w = $("#ev-days"); if (w) w.hidden = el.value !== "days"; return; }
     if (set === "evening-sel") { if (!ui.eveningSel) ui.eveningSel = new Set(); if (el.checked) ui.eveningSel.add(el.dataset.id); else ui.eveningSel.delete(el.dataset.id); return; }
     if (set === "st-text") { syncSubtasks(el.closest("form")); return; }
@@ -2396,20 +2406,115 @@
   }
   document.addEventListener("input", (e) => {
     if (e.target && e.target.id === "quick-input") quickPreview();
-    if (e.target && e.target.id === "qa-input") quickPreview("#qa-input", "#qa-preview");
+    if (e.target && e.target.id === "qa-input") qaRefreshAll();
   });
 
   // Foglio "Aggiungi" (pulsante +): una riga per scrivere, più le scorciatoie
+  // Aggiunta veloce: scrivi cosa, tocca quando / ora / durata, Aggiungi.
+  // Con un'ora diventa un appuntamento; senza, un'attività che metto io dove c'è tempo.
+  const qa = { day: "", time: "", dur: 0, touched: {} };
+  function qaChips() {
+    const t = now(), today = T.startOfDay(t);
+    const days = [["", "Qualsiasi"], [T.dateKey(today), "Oggi"], [T.dateKey(T.addDays(today, 1)), "Domani"], [T.dateKey(T.addDays(today, 2)), T.GIORNI_BREVI[new Date(T.addDays(today, 2)).getDay()]]];
+    const custom = qa.day && !days.some((d) => d[0] === qa.day);
+    return '<div class="qa-line"><span class="qa-lbl">Quando</span><div class="chips tight">' +
+      days.map(([v, l]) => '<button type="button" data-act="qa-day" data-v="' + v + '" class="' + (qa.day === v ? "on" : "") + '">' + l + "</button>").join("") +
+      '<label class="chipdate' + (custom ? " on" : "") + '">' + (custom ? T.fmtDay(T.fromKey(qa.day), t, { short: true }) : I.calendar) + '<input type="date" data-set="qa-date" value="' + esc(qa.day) + '" aria-label="Altro giorno"></label></div></div>' +
+      '<div class="qa-line"><span class="qa-lbl">Ora</span><div class="chips tight">' +
+      '<button type="button" data-act="qa-time" data-v="" class="' + (!qa.time ? "on" : "") + '">Libera</button>' +
+      '<label class="chipdate' + (qa.time ? " on" : "") + '">' + (qa.time ? qa.time : I.timer + " Scegli") + '<input type="time" data-set="qa-time" value="' + esc(qa.time) + '" aria-label="Ora"></label>' +
+      "</div></div>" +
+      '<div class="qa-line"><span class="qa-lbl">Durata</span><div class="chips tight">' +
+      [15, 30, 60, 90, 120].map((m) => '<button type="button" data-act="qa-dur" data-v="' + m + '" class="' + (qa.dur === m ? "on" : "") + '">' + T.fmtDurShort(m) + "</button>").join("") + "</div></div>";
+  }
+
   function addSheet() {
-    openModal('<h2>Aggiungi</h2><form id="qa-form" autocomplete="off">' +
-      '<div class="qa-row"><input id="qa-input" type="text" enterkeyhint="done" placeholder="Es. Dentista domani alle 15" aria-label="Cosa vuoi aggiungere">' +
-      '<button type="submit" class="cbtn send" aria-label="Aggiungi">' + I.check + "</button></div>" +
-      '<div class="quick-preview" id="qa-preview" hidden></div></form>' +
-      '<div class="qa-alt"><button class="btn small" data-act="new-task">' + I.check + "Attività</button>" +
-      '<button class="btn small" data-act="new-event">' + I.calendar + "Appuntamento</button>" +
-      '<button class="btn small" data-act="new-routine">' + I.repeat + "Ogni giorno</button></div>");
+    qa.day = ""; qa.time = ""; qa.dur = 0; qa.touched = {};
+    openModal('<form id="qa-form" autocomplete="off"><div class="sheet-head"><h2>Aggiungi</h2><button class="iconbtn" type="button" data-act="close" aria-label="Chiudi">' + I.x + "</button></div>" +
+      '<input class="big-title" id="qa-input" type="text" enterkeyhint="done" placeholder="Cosa? (es. Palestra domani alle 18)" aria-label="Cosa vuoi aggiungere">' +
+      '<div id="qa-chips">' + qaChips() + "</div>" +
+      '<div class="qa-summary" id="qa-preview"></div>' +
+      '<button class="btn primary block save" type="submit">Aggiungi</button>' +
+      '<div class="sheet-secondary"><button class="btn small ghost" type="button" data-act="qa-more">Più dettagli</button><button class="btn small ghost" type="button" data-act="new-routine">' + I.repeat + "Ogni giorno</button></div></form>");
+    qaRefresh();
     const inp = $("#qa-input");
     if (inp && inp.focus) setTimeout(() => inp.focus(), 50);
+  }
+
+  // Legge la frase e aggiorna giorno/ora/durata (senza toccare quello che hai scelto tu)
+  function qaParse() {
+    const v = ($("#qa-input") && $("#qa-input").value || "").trim();
+    const r = v ? P.parse(v, now()) : null;
+    const out = { title: v, day: qa.day, time: qa.time, dur: qa.dur, repeat: null, days: null, pref: null, deadline: null, priority: 2 };
+    if (!r) return out;
+    out.title = r.title || v;
+    out.priority = r.priority || 2;
+    if (r.kind === "event") {
+      if (!qa.touched.day) out.day = r.start.slice(0, 10);
+      if (!qa.touched.time) out.time = r.start.slice(11, 16);
+      if (!qa.touched.dur && r.recognized.includes("durata")) out.dur = r.duration;
+      out.repeat = r.repeat || null; out.days = r.days || null;
+    } else {
+      if (!qa.touched.day && r.notBefore) out.day = r.notBefore;
+      if (!qa.touched.dur && r.recognized.includes("durata")) out.dur = r.duration;
+      if (r.deadline && r.deadline !== r.notBefore) out.deadline = r.deadline;
+      out.pref = r.pref || null;
+    }
+    return out;
+  }
+
+  function qaRefresh() {
+    const q = qaParse();
+    const box = $("#qa-preview");
+    if (!box) return;
+    if (!q.title) { box.innerHTML = '<span class="muted">Scrivi cosa devi fare. Con un\'ora diventa un appuntamento.</span>'; return; }
+    const t = now();
+    const dayTxt = q.day ? T.fmtDay(T.fromKey(q.day), t).toLowerCase() : "";
+    const dur = q.dur || (q.time ? 60 : A.estimate(q.title));
+    box.innerHTML = q.time
+      ? I.calendar + " <b>" + esc(q.title) + "</b> · " + (dayTxt || "oggi") + " " + q.time + "–" + T.fmtHM(T.atMin(T.startOfDay(t), T.hmToMin(q.time) + dur)) + (q.repeat ? " · si ripete" : "")
+      : I.check + " <b>" + esc(q.title) + "</b> · " + T.fmtDur(dur) + (dayTxt ? " · " + dayTxt : " · quando c'è tempo") + (q.deadline ? " · entro " + fmtDeadline(q.deadline, t) : "");
+  }
+
+  // aggiorna anche i pulsanti scelti in base alla frase (es. "domani alle 18")
+  function qaRefreshAll() {
+    const q = qaParse();
+    const wrap = $("#qa-chips");
+    if (wrap) {
+      const save = { day: qa.day, time: qa.time, dur: qa.dur };
+      qa.day = q.day; qa.time = q.time; qa.dur = q.dur;
+      wrap.innerHTML = qaChips();
+      if (!qa.touched.day) qa.day = save.day;
+      if (!qa.touched.time) qa.time = save.time;
+      if (!qa.touched.dur) qa.dur = save.dur;
+    }
+    qaRefresh();
+  }
+
+  function qaSubmit() {
+    const v = ($("#qa-input") && $("#qa-input").value || "").trim();
+    if (!v) return;
+    // più cose insieme ("studiare 2 ore, palestra e spesa") o richieste: ci pensa l'assistente
+    const r = A.respond(v, state, now());
+    if (r && r.ops && (r.ops.length > 1 || !isPureAdd(r))) { closeModal(); ask(v); return; }
+    if (r && !r.ops && /c'è già/.test(r.text || "") && !qa.touched.day && !qa.touched.time) { closeModal(); return; }
+    const q = qaParse();
+    const n = now();
+    let op;
+    if (q.time) {
+      const day = q.day || T.dateKey(n);
+      const start = T.atMin(T.fromKey(day), T.hmToMin(q.time));
+      const dur = q.dur || A.estimate(q.title) || 60;
+      const after = { title: q.title, start: T.toISO(start), end: T.toISO(start + Math.max(dur, 15) * MIN), repeat: q.repeat || "none", area: G.areas.guess(q.title) };
+      if (q.repeat === "days") after.days = q.days;
+      op = PR.op(state, "create_event", { after });
+    } else {
+      const dur = q.dur || A.estimate(q.title);
+      op = PR.op(state, "create_task", { after: { title: q.title, duration: dur, remaining: dur, priority: q.priority, notBefore: q.day || null,
+        deadline: q.deadline || q.day || null, pref: q.pref, splittable: dur > 30, area: G.areas.guess(q.title) } });
+    }
+    closeModal();
+    instantAdd({ ops: [op], text: "" }, v);
   }
 
   document.addEventListener("keydown", (e) => {
