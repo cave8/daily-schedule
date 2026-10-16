@@ -497,6 +497,7 @@
           else estimates.push("«" + r.title + "»: 1 h");
         }
         const after = { title: r.title, start: r.start, end, repeat: r.repeat || "none", area: G.areas.guess(r.title) };
+        if (r.repeat === "days") after.days = r.days;
         ops.push(PR.op(state, "create_event", { after }));
         lines.push("📅 " + r.title + " — " + fmtWhen(T.fromISO(r.start), now) + "–" + T.fmtHM(T.fromISO(end)) + (r.repeat ? " (si ripete)" : ""));
       } else {

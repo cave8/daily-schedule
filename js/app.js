@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.10";
+  const APP_VERSION = "0.10.1";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -17,13 +17,20 @@
 
   let mode = ST.getMode();
   let state = ST.load(mode);
-  const ui = { tab: "oggi", listTab: "tasks", filter: "all", showDone: false, cal: { view: "day", date: T.startOfDay(now()) },
+  const ui = { tab: "oggi", listTab: "tasks", filter: "today", showDone: false, cal: { view: "day", date: T.startOfDay(now()) },
     editingProposal: null, showProposalInCal: true };
   try { ui.tab = sessionStorage.getItem("ds.tab") || "oggi"; } catch (e) { /* facoltativo */ }
 
   const PRIO = { 1: "Alta", 2: "Media", 3: "Bassa" };
   const PREF_LBL = { "": "Quando capita", morning: "Mattina", afternoon: "Pomeriggio", evening: "Sera" };
-  const REPEAT_LBL = { none: "Mai", daily: "Ogni giorno", weekdays: "Giorni feriali (lun–ven)", weekly: "Ogni settimana", monthly: "Ogni mese" };
+  const REPEAT_LBL = { none: "Mai", daily: "Ogni giorno", weekdays: "Giorni feriali (lun–ven)", days: "Giorni scelti", weekly: "Ogni settimana", monthly: "Ogni mese" };
+  const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  function repeatText(e) {
+    const s = T.fromISO(e.start);
+    if (e.repeat === "weekly") return "Ogni " + T.GIORNI[new Date(s).getDay()];
+    if (e.repeat === "days" && e.days && e.days.length) return "Ogni " + WEEK_ORDER.filter((d) => e.days.includes(d)).map((d) => T.GIORNI_BREVI[d]).join(", ");
+    return REPEAT_LBL[e.repeat] || "";
+  }
   const SRC_LBL = { "apple-calendar": " Calendario", "apple-reminders": " Promemoria" };
 
   // Icone (tratto, 24x24)
@@ -1469,8 +1476,7 @@
       if (rep.length) {
         html += '<div class="sec"><h2>Si ripetono</h2></div><div class="card list-card"><ul class="list">' + rep.map((e) => {
           const s = T.fromISO(e.start), en = T.fromISO(e.end);
-          let rl = REPEAT_LBL[e.repeat];
-          if (e.repeat === "weekly") rl = "Ogni " + T.GIORNI[new Date(s).getDay()];
+          const rl = repeatText(e);
           return '<li class="li' + (isApple(e.source) ? " src-apple" : "") + '" data-open="event:' + esc(e.id) + '"><span class="bar"></span><div class="body"><div class="title">' + esc(e.title) + srcTag(e.source) + "</div>" +
             '<div class="meta">' + rl + " · " + T.fmtHM(s) + "–" + T.fmtHM(en) + (e.until ? " · fino al " + T.fmtDay(T.fromKey(e.until), t, { short: true }) : "") + '</div></div><span class="chev">' + I.right + "</span></li>";
         }).join("") + "</ul></div>";
@@ -1669,7 +1675,7 @@
     const heading = formMode === "proposal" ? "Modifica la proposta" : isNew ? "Nuovo appuntamento" : apple ? "Evento Apple Calendar" : "Appuntamento";
     const durChips = [15, 30, 45, 60, 90, 120].map((d) =>
       '<button type="button" data-act="ev-dur" data-min="' + d + '" class="' + (d === durMin ? "on" : "") + '">' + T.fmtDurShort(d) + "</button>").join("");
-    const showMore = !!(recurring || ev.location || ev.notes || (ev.travel != null && ev.travel !== ""));
+    const showMore = !!(ev.until || ev.location || ev.notes || (ev.travel != null && ev.travel !== ""));
     const secondary = [
       formMode === "edit" && (apple || recurring) && (occDate || !recurring) ? '<button class="btn small" type="button" data-act="hide" data-key="e:' + esc(recurring ? ev.id + "@" + occDate : ev.id) + '" data-title="' + esc(ev.title) + '">' + I.eyeOff + "Oscura" + (recurring ? " questo giorno" : "") + "</button>" : "",
       formMode === "edit" && !apple && recurring && occDate ? '<button class="btn small danger" type="button" data-act="delete-occ" data-id="' + esc(ev.id) + '" data-occ="' + esc(occDate) + '">Elimina solo questa volta</button>' : "",
@@ -1686,12 +1692,16 @@
           fRow("Giorno", '<input type="date" name="date" required value="' + T.dateKey(s) + '">'),
           fRow("Inizio", '<input type="time" name="start" required value="' + T.fmtHM(s) + '">'),
           fRow("Fine", '<input type="time" name="end" required value="' + T.fmtHM(e) + '">'),
-        ]) + '<div class="chips tight">' + durChips + "</div>") +
+          apple ? "" : fRow("Si ripete", '<select name="repeat" data-set="ev-repeat">' + Object.keys(REPEAT_LBL).map((k) => '<option value="' + k + '"' + ((ev.repeat || "none") === k ? " selected" : "") + ">" + REPEAT_LBL[k] + "</option>").join("") + "</select>"),
+        ]) +
+        (apple ? "" : '<div class="daypick-wrap" id="ev-days"' + (ev.repeat === "days" ? "" : " hidden") + '><input type="hidden" name="days" value="' + esc((ev.days || [new Date(s).getDay()]).join(",")) + '">' +
+          '<div class="chips daypick">' + WEEK_ORDER.map((d) => '<button type="button" data-act="toggle-day" data-d="' + d + '" class="' + ((ev.days || [new Date(s).getDay()]).includes(d) ? "on" : "") + '">' + T.GIORNI_BREVI[d] + "</button>").join("") + "</div>" +
+          '<p class="hint">Tutte le settimane, nei giorni scelti, alla stessa ora.</p></div>') +
+        '<div class="chips tight">' + durChips + "</div>") +
       areaPicker(ev.area) +
       '<details class="more"' + (showMore ? " open" : "") + "><summary>Altre opzioni</summary>" +
       fGroup([
-        apple ? "" : fRow("Si ripete", '<select name="repeat">' + Object.keys(REPEAT_LBL).map((k) => '<option value="' + k + '"' + ((ev.repeat || "none") === k ? " selected" : "") + ">" + REPEAT_LBL[k] + "</option>").join("") + "</select>"),
-        apple ? "" : fRow("Fino al", '<input type="date" name="until" value="' + esc(ev.until || "") + '">'),
+        apple ? "" : fRow("Ripeti fino al", '<input type="date" name="until" value="' + esc(ev.until || "") + '">'),
         fRow("Luogo", '<input type="text" name="location" placeholder="Facoltativo" value="' + esc(ev.location || "") + '">'),
         fRow("Minuti per arrivarci", '<input type="number" inputmode="numeric" name="travel" min="0" max="240" step="5" placeholder="Auto" value="' + (ev.travel != null && ev.travel !== "" ? esc(ev.travel) : "") + '">'),
       ]) +
@@ -1796,7 +1806,14 @@
       if (endMs <= startMs) endMs = T.addDays(endMs, 1);
       data.start = T.toISO(startMs); data.end = T.toISO(endMs);
     }
-    if (f.get("repeat") != null) { data.repeat = f.get("repeat") || "none"; data.until = f.get("until") || null; }
+    if (f.get("repeat") != null) {
+      data.repeat = f.get("repeat") || "none"; data.until = f.get("until") || null;
+      if (data.repeat === "days") {
+        const days = String(f.get("days") || "").split(",").filter((x) => x !== "").map(Number);
+        if (days.length) data.days = days; else data.repeat = "weekly";
+        if (days.length === 7) { data.repeat = "daily"; delete data.days; }
+      } else data.days = null;
+    }
     return data;
   }
 
@@ -1997,6 +2014,8 @@
     if (e.target.matches && e.target.matches("input, select, textarea")) return;
     const tabBtn = e.target.closest("[data-tab]");
     if (tabBtn) {
+      // aprendo la scheda Attività si parte sempre da «Oggi»
+      if (tabBtn.dataset.tab === "attivita" && ui.tab !== "attivita") { ui.filter = "today"; ui.listTab = "tasks"; }
       ui.tab = tabBtn.dataset.tab;
       rememberTab();
       render();
@@ -2327,6 +2346,7 @@
       } else commit((s) => { s.notifications = el.checked; });
       return;
     }
+    if (set === "ev-repeat") { const w = $("#ev-days"); if (w) w.hidden = el.value !== "days"; return; }
     if (set === "evening-sel") { if (!ui.eveningSel) ui.eveningSel = new Set(); if (el.checked) ui.eveningSel.add(el.dataset.id); else ui.eveningSel.delete(el.dataset.id); return; }
     if (set === "st-text") { syncSubtasks(el.closest("form")); return; }
     if (set === "evening-time") { if (el.value) commit((s) => { s.settings.eveningTime = el.value; }, "Orario salvato"); return; }

@@ -224,6 +224,19 @@
   const pb = app.state.plan.blocks.find((b) => b.taskId === "d-t6");
   ok(pb && G.time.dateKey(pb.start) !== today && !app.state.tasks.find((t) => t.id === "d-t6").done, "promemoria oscurato oggi: non cancellato, spostato");
 
+  // 10d2. Appuntamento ripetuto in giorni scelti, dal modulo e scrivendo
+  safe("palestra dal modulo", () => submit("event-form", { id: "", occ: "", mode: "new" },
+    { title: "Palestra nuova", date: G.time.dateKey(app.now()), start: "19:00", end: "20:00", repeat: "days", days: "1,3,5", until: "", location: "", travel: "", notes: "", area: "sport" }));
+  const pg = app.state.events.find((e) => e.title === "Palestra nuova");
+  ok(pg && pg.repeat === "days" && JSON.stringify(pg.days) === "[1,3,5]", "appuntamento ripetuto lun/mer/ven");
+  click({ tab: "attivita" }); click({ act: "list-tab", v: "events" });
+  ok(/Ogni lun, mer, ven/.test(view()), "elenco mostra i giorni scelti");
+  safe("apri modulo", () => click({ open: "event:" + pg.id }));
+  ok(/name="repeat" data-set="ev-repeat"/.test(modal()) && /id="ev-days"(?! hidden)/.test(modal()), "modulo: «Si ripete» in vista con i giorni");
+  click({ act: "close" });
+  click({ tab: "oggi" }); click({ tab: "attivita" });
+  ok(/data-v="today" class="on"/.test(view()), "Attività si apre su «Oggi»");
+
   // 10e. Briefing del mattino
   click({ tab: "oggi" });
   ok(/La tua giornata/.test(view()) && /Le 3 cose più importanti/.test(view()), "briefing del mattino mostrato");
@@ -249,7 +262,7 @@
       subtasks: JSON.stringify([{ id: "a", text: "Scatoloni", done: false }, { id: "b", text: "Furgone", done: true }]) }));
   const tr = app.state.tasks.find((t) => t.title === "Trasloco");
   ok(tr && tr.area === "casa" && tr.subtasks.length === 2 && tr.subtasks[1].done, "attività con area e passi");
-  click({ tab: "attivita" }); click({ act: "list-tab", v: "tasks" });
+  click({ tab: "attivita" }); click({ act: "list-tab", v: "tasks" }); click({ act: "filter", v: "all" });
   ok(/1\/2 passi/.test(view()) && /areachip/.test(view()), "elenco mostra passi e filtri per area");
   safe("filtro area", () => click({ act: "filter", v: "casa" }));
   ok(/Trasloco/.test(view()) && !/Studiare per l/.test(view()), "filtro per area");

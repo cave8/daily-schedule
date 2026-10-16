@@ -302,6 +302,14 @@
   const wk = G.stats.week(st, NOW);
   ok(wk.doneCount === 2 && wk.areas.find((a) => a.id === "lavoro").minutes === 75 && wk.focusMin === 75, "settimana: tempo per area (usa il tempo reale del timer)");
 
+  // 32. ripetizione in più giorni della settimana
+  const gym = S.expandEvents([ev({ id: "gy", title: "Palestra", start: "2026-10-12T19:00", end: "2026-10-12T20:30", repeat: "days", days: [1, 3, 5] })], at(12, 0), at(26, 0));
+  eq(gym.map((o) => o.dateKey), ["2026-10-12", "2026-10-14", "2026-10-16", "2026-10-19", "2026-10-21", "2026-10-23"], "sched: lun, mer, ven tutte le settimane");
+  r = P.parse("Palestra ogni lunedì, mercoledì e venerdì alle 19 per 1h30", NOW);
+  eq([r.kind, r.title, r.repeat, r.days, r.start, r.end], ["event", "Palestra", "days", [1, 3, 5], "2026-10-16T19:00", "2026-10-16T20:30"], "parser: ogni lunedì, mercoledì e venerdì");
+  r = P.parse("Corso di nuoto ogni martedì e giovedì alle 18", NOW);
+  eq([r.repeat, r.days, r.start], ["days", [2, 4], "2026-10-15T18:00"], "parser: ogni martedì e giovedì (oggi è giovedì)");
+
   print("");
   failures.forEach((f) => print("  ✗ " + f));
   print("\n" + pass + " test superati, " + fail + " falliti");

@@ -11,7 +11,7 @@
 
   const TASK_FIELDS = ["title", "duration", "remaining", "priority", "deadline", "notBefore", "pref", "splittable",
     "pinnedStart", "notes", "snoozeUntil", "done", "doneAt", "area", "subtasks", "spent", "actual", "recurrence", "list", "onDay", "noAuto", "appleDue", "pinOverride", "appleComplete", "appleError", "historyOf"];
-  const EVENT_FIELDS = ["title", "start", "end", "location", "notes", "repeat", "until", "allDay", "area", "travel"];
+  const EVENT_FIELDS = ["title", "start", "end", "location", "notes", "repeat", "until", "allDay", "area", "travel", "days"];
   const OP_TYPES = ["create_task", "update_task", "complete_task", "create_event", "update_event"];
 
   const clone = (x) => JSON.parse(JSON.stringify(x));

@@ -85,6 +85,7 @@
       case "weekdays": return wd >= 1 && wd <= 5;
       case "weekly": return wd === new Date(firstDay).getDay();
       case "monthly": return new Date(day).getDate() === new Date(firstDay).getDate();
+      case "days": return Array.isArray(ev.days) && ev.days.includes(wd); // giorni scelti, tutte le settimane
       default: return false;
     }
   }

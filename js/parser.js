@@ -127,6 +127,18 @@
     let m = take(new RegExp("\\s(?:ogni\\s+giorno|tutti\\s+i\\s+giorni)(?=\\s)", "i"));
     if (m) res.repeat = "daily";
     if (!m && (m = take(/\s(?:ogni\s+giorno\s+feriale|nei\s+giorni\s+feriali|dal\s+luned[iì]\s+al\s+venerd[iì])(?=\s)/i))) res.repeat = "weekdays";
+    if (!res.repeat && (m = take(new RegExp("\\s(?:ogni|tutti\\s+i|il)\\s+(" + WD_RE + "(?:\\s*(?:,|e)\\s*" + WD_RE + ")+)(?=\\s)", "i")))) {
+      // più giorni: "ogni lunedì, mercoledì e venerdì"
+      const names = m[1].split(/\s*(?:,|\be\b)\s*/).map((x) => x.trim()).filter(Boolean);
+      const days = [...new Set(names.map((n) => parseDate(n, now)).filter(Boolean).map((d) => new Date(d.day).getDay()))];
+      if (days.length > 1) {
+        res.repeat = "days";
+        res.days = days.sort();
+        // il primo giorno utile da oggi in poi (oggi compreso)
+        const t0 = T.startOfDay(now);
+        for (let i = 0; i < 7; i++) { const d = T.addDays(t0, i); if (days.includes(new Date(d).getDay())) { res._repeatDay = { day: d }; break; } }
+      }
+    }
     if (!res.repeat && (m = take(new RegExp("\\sogni\\s+(" + WD_RE + ")(?=\\s)", "i")))) {
       res.repeat = "weekly";
       res._repeatDay = parseDate(m[1], now);
