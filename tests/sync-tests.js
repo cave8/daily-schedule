@@ -57,7 +57,7 @@
 
   const NOW = Date.now();
   const mac = G.store.empty(); mac.onboarded = true;
-  mac.settings.buffer = 25; mac.profile.name = "Elia";
+  mac.settings.buffer = 25; mac.profile.name = "Alex";
   mac.tasks.push({ id: "t1", title: "Report", duration: 60, remaining: 60, priority: 1, source: "internal" });
   mac.events.push({ id: "ac:E1@x", title: "Riunione", start: "2026-10-20T10:00", end: "2026-10-20T11:00", source: "apple-calendar" });
   mac.integrations = { calendar: "connected", reminders: "connected" };
@@ -75,7 +75,7 @@
     on(phoneStore); await G.sync.signIn("io@example.invalid", "giusta");
     await G.sync.sync(phone);
   }), "l'iPhone si collega");
-  ok(phone.settings.buffer === 25 && phone.profile.name === "Elia", "prima volta: l'iPhone prende le impostazioni del Mac (non le sovrascrive)");
+  ok(phone.settings.buffer === 25 && phone.profile.name === "Alex", "prima volta: l'iPhone prende le impostazioni del Mac (non le sovrascrive)");
   ok(phone.tasks.some((t) => t.id === "t1") && phone.tasks.some((t) => t.id === "p1"), "l'iPhone ha le attività del Mac e tiene le sue");
   ok(phone.events.some((e) => e.source === "apple-calendar"), "gli eventi Apple del Mac arrivano sull'iPhone");
   ok(phone.appleRemote && phone.appleRemote.at === NOW, "l'iPhone sa quando il Mac ha letto Apple");

@@ -75,7 +75,7 @@
   ok(app.mode === "demo" && els["#demo-banner"].hidden === false && /DATI DIMOSTRATIVI/.test(els["#demo-banner"].innerHTML), "demo etichettata");
   ok(!store["dailyschedule.real"] || JSON.parse(store["dailyschedule.real"]).tasks.length === 0, "dati demo separati da quelli reali");
   click({ tab: "oggi" });
-  ok(/Buongiorno, Elia/.test(view()) && /appuntamenti/.test(view()) && /suggerito/.test(view()) && /Calendario demo/.test(view()), "dashboard: saluto, riepilogo, suggeriti, Apple");
+  ok(/Buongiorno, Alex/.test(view()) && /appuntamenti/.test(view()) && /suggerito/.test(view()) && /Calendario demo/.test(view()), "dashboard: saluto, riepilogo, suggeriti, Apple");
   ok(/Priorità/.test(view()) && /Completate oggi/.test(view()) && /liberi/.test(view()), "dashboard: priorità, completate, tempo libero");
   clean("Oggi");
 
@@ -324,9 +324,9 @@
   safe("esci demo", () => click({ act: "exit-demo" }));
   ok(app.mode === "real" && els["#demo-banner"].hidden === true, "uscita dalla demo");
   ok(/Benvenuto/.test(view()), "dati reali vuoti: benvenuto");
-  els["#w-name"] = Object.assign(mkEl("w-name"), { value: "Elia" });
+  els["#w-name"] = Object.assign(mkEl("w-name"), { value: "Alex" });
   safe("inizia reale", () => click({ act: "start-real" }));
-  ok(app.state.profile.name === "Elia" && app.state.tasks.length === 0, "dati reali separati dalla demo");
+  ok(app.state.profile.name === "Alex" && app.state.tasks.length === 0, "dati reali separati dalla demo");
 
   // 12. Uso reale: assistente + conferma, imprevisto, check-in, impostazioni
   safe("aggiungi reale", () => say("Dentista oggi alle 11"));
@@ -414,7 +414,7 @@
 
   // 13. Salvataggio
   const saved = JSON.parse(store["dailyschedule.real"]);
-  ok(saved.tasks.some((t) => t.title === "Report") && saved.events.some((e) => e.title === "Dentista") && saved.profile.name === "Elia", "dati reali salvati");
+  ok(saved.tasks.some((t) => t.title === "Report") && saved.events.some((e) => e.title === "Dentista") && saved.profile.name === "Alex", "dati reali salvati");
   const demoSaved = JSON.parse(store["dailyschedule.demo"]);
   ok(demoSaved.tasks.some((t) => t.title === "Leggere il giornale"), "dati demo conservati a parte");
 

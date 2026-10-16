@@ -17,7 +17,7 @@
 
     const st = G.store.empty();
     st.onboarded = true;
-    st.profile = { name: "Elia" };
+    st.profile = { name: "Alex" };
     st.events = [
       Object.assign({ id: "d-e1", title: "Riunione di team", start: at(0, "10:00"), end: at(0, "11:00"), location: "Sala B", travel: 0, area: "lavoro", source: "apple-calendar", calendar: "Lavoro" }, apple("e1")),
       { id: "d-e2", area: "lavoro", title: "Call con un cliente", start: at(0, "16:00"), end: at(0, "16:30"), source: "internal" },

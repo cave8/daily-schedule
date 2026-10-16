@@ -6,8 +6,8 @@ import Cocoa
 import WebKit
 import EventKit
 
-let appURL = URL(string: ProcessInfo.processInfo.environment["DS_URL"] ?? "https://daily-schedules.netlify.app/")!
-let allowedHosts: Set<String> = ["daily-schedules.netlify.app", "localhost", "127.0.0.1"]
+let appURL = URL(string: ProcessInfo.processInfo.environment["DS_URL"] ?? "https://cave8.github.io/daily-schedule/")!
+let allowedHosts: Set<String> = ["cave8.github.io", "daily-schedules.netlify.app", "localhost", "127.0.0.1"]
 
 // MARK: - Accesso ai dati Apple (solo lettura)
 

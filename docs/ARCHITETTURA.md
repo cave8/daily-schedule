@@ -70,12 +70,12 @@ e mostra sempre un'etichetta "DATI DIMOSTRATIVI". Gli elementi "Apple" della dem
 sono finti e non toccano i dati reali.
 
 ## Costi
-Nessuno. Niente API a pagamento. Servizi previsti, tutti con piano gratuito: GitHub (codice), Netlify (pubblicazione), Supabase (sincronizzazione, fase 7).
+Nessuno. Niente API a pagamento. Servizi previsti, tutti con piano gratuito: GitHub (codice e pubblicazione con GitHub Pages), Supabase (sincronizzazione, fase 7).
 
 ## Daily Schedule per Mac (fase 5)
 - Codice: `mac/Sources/main.swift`; si costruisce con `mac/build.sh` (solo strumenti già presenti nel Mac, nessun Xcode) e si installa in `~/Applications`.
 - Il ponte (`window.webkit.messageHandlers.apple`) offre solo: `status`, `requestAccess`, `fetch`. Ogni altra richiesta viene rifiutata.
-- Il ponte risponde solo a pagine di `daily-schedules.netlify.app` (o `localhost` per le prove).
+- Il ponte risponde solo a pagine di `cave8.github.io/daily-schedule` (o `localhost` per le prove).
 - La pagina (`js/apple.js`) fonde i dati: gli identificativi Apple sono stabili (`ac:` eventi, `ar:` promemoria), quindi niente doppioni; area, durata stimata, passi e spostamenti aggiunti in Daily Schedule restano.
 - Quando cambia qualcosa in Calendario o Promemoria, macOS lo segnala e il programma si aggiorna da solo.
 - Autoverifica senza finestra: `DS_URL=http://localhost:8080/ "~/Applications/Daily Schedule.app/Contents/MacOS/DailySchedule" --selftest`.

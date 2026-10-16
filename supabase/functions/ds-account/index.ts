@@ -2,7 +2,7 @@
 // È un'app personale: si può creare UN SOLO account confermato. Dopo il primo, la funzione rifiuta.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const ALLOWED_ORIGINS = ["https://daily-schedules.netlify.app", "http://localhost:8080", "http://127.0.0.1:8080"];
+const ALLOWED_ORIGINS = ["https://cave8.github.io", "https://daily-schedules.netlify.app", "http://localhost:8080", "http://127.0.0.1:8080"];
 
 function cors(origin: string | null) {
   const o = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];

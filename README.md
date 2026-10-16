@@ -59,3 +59,7 @@ In questa versione legge soltanto: non modifica nulla in Calendario e Promemoria
 - **Costi:** nessuno. Niente API a pagamento.
 
 Font: Archivo (licenza SIL Open Font), incluso in `fonts/`.
+
+## Pubblicazione
+Il sito è pubblicato con **GitHub Pages** dal ramo `main`: https://cave8.github.io/daily-schedule/
+(Prima era su Netlify: spostato il 16/10/2026 perché il piano gratuito di Netlify consuma crediti a ogni pubblicazione.)
