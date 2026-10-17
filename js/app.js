@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.11.1";
+  const APP_VERSION = "0.11.2";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -160,6 +160,14 @@
     render();
     if (message) toast(message, snapshot);
     return snapshot;
+  }
+
+  // Come commit, ma senza ridisegnare la pagina (per i campi che si stanno ancora modificando)
+  function commitQuiet(fn) {
+    fn(state);
+    cleanCheckins();
+    replan();
+    save();
   }
 
   function cleanCheckins() {
@@ -332,7 +340,7 @@
     for (const b of blocks) {
       if (prevEnd != null && b.start > t && !(opts && opts.noGaps)) {
         const from = Math.max(prevEnd, t);
-        if (b.start - from >= 20 * MIN) html += '<li class="tl-gap"><span></span><div class="tl-rail"></div><span>Libero · ' + T.fmtDur((b.start - from) / MIN) + "</span></li>";
+        void from; // le righe "Libero · ..." sono state tolte su richiesta
       }
       html += rowHTML(b, t, opts);
       prevEnd = Math.max(prevEnd || 0, b.end);
@@ -1292,7 +1300,7 @@
     else if (c.view === "week") { const ws = weekStart(c.date); html += gridHTML([0, 1, 2, 3, 4, 5, 6].map((i) => T.addDays(ws, i)), pp, 42); }
     else html += monthHTML(pp);
     html += '<div class="legend"><span><i class="lg-event"></i>Appuntamento</span><span><i class="lg-apple"></i>Apple Calendar' + (mode === "demo" ? " (demo)" : "") + '</span>' +
-      '<span><i class="lg-task"></i>Attività (orario suggerito)</span><span><i class="lg-free"></i>Libero</span>' + (pp ? '<span><i class="lg-prop"></i>Proposta</span>' : "") + "</div>";
+      '<span><i class="lg-task"></i>Attività (orario suggerito)</span>' + (pp ? '<span><i class="lg-prop"></i>Proposta</span>' : "") + "</div>";
     return html;
   }
 
@@ -1355,17 +1363,6 @@
       // toccando un'ora vuota si crea un appuntamento a quell'ora
       for (let m = minH * 60; m < maxH * 60; m += 30) {
         html += '<div class="slot" data-act="new-at" data-ts="' + T.atMin(d, m) + '" style="top:' + (m / 60 - minH) * pxPerHour + "px;height:" + pxPerHour / 2 + 'px" title="Nuovo appuntamento alle ' + T.fmtHM(T.atMin(d, m)) + '"></div>';
-      }
-      // spazi liberi (solo da adesso in poi, negli orari disponibili)
-      const hrs = state.settings.hours[new Date(d).getDay()];
-      if (hrs && hrs.on) {
-        let free = [[Math.max(T.atMin(d, T.hmToMin(hrs.start)), t), T.atMin(d, T.hmToMin(hrs.end))]];
-        if (free[0][1] > free[0][0]) {
-          for (const b of bl) if (b.kind !== "allday") free = S.subtract(free, b.start, b.end);
-          for (const [a, b] of free) if ((b - a) / MIN >= 30) {
-            html += '<div class="ev free' + (multi ? " faint" : "") + '" style="top:' + y(d, a) + "px;height:" + Math.max(14, y(d, b) - y(d, a) - 2) + 'px;left:3px;right:3px">' + (multi ? "" : "Libero · " + T.fmtDur((b - a) / MIN)) + "</div>";
-          }
-        }
       }
       const items = bl.filter((b) => b.kind !== "allday").map((b) => Object.assign({}, b, { start: Math.max(b.start, d), end: Math.min(b.end, T.addDays(d, 1)) }));
       const evs = items.filter((b) => b.kind === "event");
@@ -2356,8 +2353,21 @@
       } else commit((s) => { s.notifications = el.checked; });
       return;
     }
-    if (set === "qa-date") { qa.day = el.value || ""; qa.touched.day = true; qaRefreshAll(); return; }
-    if (set === "qa-time") { qa.time = el.value || ""; qa.touched.time = true; qaRefreshAll(); return; }
+    if (set === "qa-date" || set === "qa-time") {
+      // aggiorno solo l'etichetta del pulsante, senza ridisegnarlo: così la rotella resta aperta finché premi OK
+      if (set === "qa-date") { qa.day = el.value || ""; qa.touched.day = true; }
+      else { qa.time = el.value || ""; qa.touched.time = true; }
+      const chip = el.parentElement;
+      if (chip && chip.querySelector) {
+        const txt = chip.querySelector(".cd-text");
+        if (txt) txt.textContent = set === "qa-time" ? (qa.time || "Scegli") : (qa.day ? T.fmtDay(T.fromKey(qa.day), now(), { short: true }) : "");
+        const row = chip.parentElement;
+        if (row && row.querySelectorAll) row.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+        if (chip.classList) chip.classList.toggle("on", !!el.value);
+      }
+      qaRefresh();
+      return;
+    }
     if (set === "ev-repeat") { const w = $("#ev-days"); if (w) w.hidden = el.value !== "days"; return; }
     if (set === "evening-sel") { if (!ui.eveningSel) ui.eveningSel = new Set(); if (el.checked) ui.eveningSel.add(el.dataset.id); else ui.eveningSel.delete(el.dataset.id); return; }
     if (set === "st-text") { syncSubtasks(el.closest("form")); return; }
@@ -2365,7 +2375,8 @@
     if (set === "morningBriefing" || set === "eveningReview") { commit((s) => { s.settings[set] = el.checked; }, "Impostazioni salvate"); return; }
     if (set === "routine-active") { commit((s) => { s.routines.find((x) => x.id === el.dataset.id).active = el.checked; }, el.checked ? "Routine attiva" : "Routine in pausa"); return; }
     if (set === "name") { commit((s) => { s.profile.name = el.value.trim().slice(0, 40); }, "Nome salvato"); return; }
-    commit((s) => {
+    const quiet = set !== "hours-on"; // l'interruttore ridisegna (abilita/disabilita gli orari), il resto no
+    (quiet ? commitQuiet : commit)((s) => {
       const st = s.settings;
       if (set === "hours-on") st.hours[+el.dataset.day].on = el.checked;
       if (set === "hours-start" && el.value) st.hours[+el.dataset.day].start = el.value;
@@ -2421,10 +2432,10 @@
     const custom = qa.day && !days.some((d) => d[0] === qa.day);
     return '<div class="qa-line"><span class="qa-lbl">Quando</span><div class="chips tight">' +
       days.map(([v, l]) => '<button type="button" data-act="qa-day" data-v="' + v + '" class="' + (qa.day === v ? "on" : "") + '">' + l + "</button>").join("") +
-      '<label class="chipdate' + (custom ? " on" : "") + '">' + (custom ? T.fmtDay(T.fromKey(qa.day), t, { short: true }) : I.calendar) + '<input type="date" data-set="qa-date" value="' + esc(qa.day) + '" aria-label="Altro giorno"></label></div></div>' +
+      '<label class="chipdate' + (custom ? " on" : "") + '"><span class="cd-text">' + (custom ? T.fmtDay(T.fromKey(qa.day), t, { short: true }) : I.calendar) + '</span><input type="date" data-set="qa-date" value="' + esc(qa.day) + '" aria-label="Altro giorno"></label></div></div>' +
       '<div class="qa-line"><span class="qa-lbl">Ora</span><div class="chips tight">' +
       '<button type="button" data-act="qa-time" data-v="" class="' + (!qa.time ? "on" : "") + '">Libera</button>' +
-      '<label class="chipdate' + (qa.time ? " on" : "") + '">' + (qa.time ? qa.time : I.timer + " Scegli") + '<input type="time" data-set="qa-time" value="' + esc(qa.time) + '" aria-label="Ora"></label>' +
+      '<label class="chipdate' + (qa.time ? " on" : "") + '"><span class="cd-text">' + (qa.time ? qa.time : I.timer + " Scegli") + '</span><input type="time" data-set="qa-time" value="' + esc(qa.time) + '" aria-label="Ora"></label>' +
       "</div></div>" +
       '<div class="qa-line"><span class="qa-lbl">Durata</span><div class="chips tight">' +
       [15, 30, 60, 90, 120].map((m) => '<button type="button" data-act="qa-dur" data-v="' + m + '" class="' + (qa.dur === m ? "on" : "") + '">' + T.fmtDurShort(m) + "</button>").join("") + "</div></div>";
