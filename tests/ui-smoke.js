@@ -407,8 +407,13 @@
   app.tick();
   safe("spunta promemoria", () => { click({ act: "done", id: "ar:GPT" }); for (let i = 0; i < 50; i++) drainMicrotasks(); });
   const gpt = app.state.tasks.find((t) => t.id === "ar:GPT");
-  ok(gpt.done && calls.some((c) => c.method === "completeReminder" && c.params.id === "GPT" && c.params.completed === true), "spunta → completato anche in Apple Promemoria");
+  ok(gpt.done && calls.some((c) => c.method === "completeReminder" && c.params.id === "GPT" && c.params.completed === true && c.params.expectDue === dk), "spunta → completato in Apple Promemoria, solo per quel giorno");
   ok(gpt.appleComplete === "done", "completamento confermato dall'app per Mac");
+  // una richiesta che torna indietro dalla sincronizzazione non viene rieseguita due volte
+  gpt.appleComplete = "pending";
+  const before2 = calls.filter((c) => c.method === "completeReminder").length;
+  safe("riesecuzione", () => { app.tick(); for (let i = 0; i < 50; i++) drainMicrotasks(); });
+  ok(calls.filter((c) => c.method === "completeReminder").length - before2 <= 1 && calls.filter((c) => c.method === "completeReminder").every((c) => c.params.expectDue === dk), "ogni richiesta porta il giorno: il Mac non completa mai il giorno dopo");
   ok(!app.state.plan.blocks.some((b) => b.taskId === "ar:GPT"), "sparisce dal programma di oggi");
   delete globalThis.webkit;
 

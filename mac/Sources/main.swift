@@ -32,7 +32,7 @@ final class AppleData {
             "reminders": AppleData.statusName(EKEventStore.authorizationStatus(for: .reminder)),
             "readOnly": false,
             "writes": ["completeReminder"],
-            "version": "0.2",
+            "version": "0.3",
         ]
     }
 
@@ -52,7 +52,7 @@ final class AppleData {
         f.dateFormat = "yyyy-MM-dd'T'HH:mm"
         return f
     }()
-    private let day: DateFormatter = {
+    let day: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone.current
@@ -207,6 +207,17 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
             let completed = params["completed"] as? Bool ?? true
             if r.isCompleted == completed { replyHandler(["ok": true, "already": true], nil); return } // già fatto: niente doppioni
             let dueBefore = r.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+            // Una spunta vale per UN giorno preciso: se il promemoria è già passato a un altro giorno, non tocco nulla
+            if let expect = params["expectDue"] as? String, !expect.isEmpty {
+                let current = dueBefore.map { data.day.string(from: $0) } ?? ""
+                if current != expect { replyHandler(["ok": true, "already": true, "skipped": "giorno diverso: \(current)"], nil); return }
+            }
+            if params["expectDue"] == nil && r.hasRecurrenceRules {
+                replyHandler(["ok": false, "error": "manca il giorno da completare"], nil); return
+            }
+            // orario dell'avviso (assoluto) da conservare dopo il completamento
+            let cal = Calendar.current
+            let alarmTime: DateComponents? = r.alarms?.compactMap { $0.absoluteDate }.first.map { cal.dateComponents([.hour, .minute], from: $0) }
             r.isCompleted = completed
             do { try data.store.save(r, commit: true) } catch {
                 replyHandler(["ok": false, "error": "non salvato: \(error.localizedDescription)"], nil); return
@@ -216,8 +227,17 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
             let check = data.store.calendarItem(withIdentifier: id) as? EKReminder
             let dueAfter = check?.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
             let advanced = r.hasRecurrenceRules && dueBefore != nil && dueAfter != nil && dueAfter! > dueBefore!
+            // Promemoria ripetuto passato al giorno dopo: Apple sposta l'avviso a mezzanotte, lo rimetto all'ora di prima
+            var alarmFixed = false
+            if advanced, let next = check, let tm = alarmTime, let nd = dueAfter,
+               let abs = next.alarms?.compactMap({ $0.absoluteDate }).first,
+               cal.dateComponents([.hour, .minute], from: abs) != tm,
+               let fixed = cal.date(bySettingHour: tm.hour ?? 0, minute: tm.minute ?? 0, second: 0, of: nd) {
+                next.alarms = [EKAlarm(absoluteDate: fixed)]
+                if (try? data.store.save(next, commit: true)) != nil { alarmFixed = true }
+            }
             let ok = completed ? (check == nil || check!.isCompleted || advanced) : (check?.isCompleted == false)
-            var res: [String: Any] = ["ok": ok, "completed": check?.isCompleted ?? completed, "advanced": advanced]
+            var res: [String: Any] = ["ok": ok, "completed": check?.isCompleted ?? completed, "advanced": advanced, "alarmFixed": alarmFixed]
             if !ok { res["error"] = "verifica non riuscita" }
             replyHandler(res, nil)
         default:
@@ -377,6 +397,15 @@ if let i = CommandLine.arguments.firstIndex(of: "--diag-reminders"), i + 1 < Com
     store.fetchReminders(matching: pred) { list in
         let all = list ?? []
         lines.append("totale=\(all.count) aperti=\(all.filter { !$0.isCompleted }.count)")
+        let filter = CommandLine.arguments.firstIndex(of: "--title").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1].lowercased() : nil }
+        if let filter = filter {
+            for r in all where (r.title ?? "").lowercased().contains(filter) {
+                let dc = r.dueDateComponents
+                let due = dc.flatMap { Calendar.current.date(from: $0) }.map { f.string(from: $0) } ?? "nessuna"
+                let al = (r.alarms ?? []).map { a in a.absoluteDate.map { "alle " + f.string(from: $0) } ?? "spostamento \(Int(a.relativeOffset / 60)) min" }.joined(separator: ", ")
+                lines.append("TITOLO | \(r.title ?? "") | id=\(r.calendarItemIdentifier.prefix(8)) | scadenza=\(due) | conOra=\(dc?.hour != nil) | completato=\(r.isCompleted) | il=\(r.completionDate.map { f.string(from: $0) } ?? "-") | ripetuto=\(r.hasRecurrenceRules) | avvisi=\(al) | lista=\(r.calendar?.title ?? "")")
+            }
+        }
         for r in all where r.hasRecurrenceRules {
             let dc = r.dueDateComponents
             let due = dc.flatMap { Calendar.current.date(from: $0) }.map { f.string(from: $0) } ?? "nessuna"

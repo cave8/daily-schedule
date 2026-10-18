@@ -243,6 +243,8 @@
   pl = S.plan(real, NOW);
   ok(!pl.blocks.some((b) => b.taskId === "ar:C1" && T.dateKey(b.start) === tdy), "Apple: dopo il completamento non è più nel programma di oggi");
 
+  eq(AP.effectiveDue({ due: "2026-10-19", alarms: [{ at: "2026-10-19T00:00" }] }, NOW), "2026-10-19", "Apple: avviso a mezzanotte non diventa un orario");
+
   print("");
   failures.forEach((f) => print("  ✗ " + f));
   print("Proposte e assistente: " + pass + " test superati, " + fail + " falliti");

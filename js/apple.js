@@ -105,10 +105,11 @@
   function timeOfDay(r) {
     if (r.due && T.hasTime(r.due)) return T.hmToMin(r.due.split("T")[1]);
     for (const al of r.alarms || []) {
-      if (al.at) return T.minOfDay(T.fromISO(al.at));
+      // un avviso a mezzanotte su un promemoria senza ora non è un "orario" (Apple lo mette da solo)
+      if (al.at) { const m = T.minOfDay(T.fromISO(al.at)); if (m === 0) continue; return m; }
       if (al.offset != null && r.due) {
         const m = Math.round(al.offset / 60); // spostamento rispetto alla mezzanotte del giorno
-        if (m >= 0 && m < 1440) return m;
+        if (m > 0 && m < 1440) return m;
       }
     }
     return null;

@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.11.3";
+  const APP_VERSION = "0.11.4";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -961,17 +961,20 @@
   let appleCmdBusy = false;
   // SOSPESO (18/10/2026): completare i promemoria ripetuti creava doppioni in Apple Promemoria.
   // Finché non è corretto, Daily Schedule NON scrive più nulla in Promemoria.
-  const APPLE_WRITES_ENABLED = false;
+  const APPLE_WRITES_ENABLED = true; // riattivato con le protezioni: una spunta vale per un giorno preciso
   function processAppleCommands() {
     if (!APPLE_WRITES_ENABLED) return Promise.resolve(false);
     if (mode !== "real" || !G.apple.available() || appleCmdBusy) return Promise.resolve(false);
     const todo = state.tasks.filter((t) => t.source === "apple-reminders" && t.appleComplete === "pending" && t.externalId);
+    // richieste senza il giorno (versione precedente): non le eseguo, per sicurezza
+    for (const t of todo.filter((x) => x.recurrence && !x.appleCompleteDue)) { t.appleComplete = "done"; t.appleError = "non eseguita (richiesta vecchia)"; }
     if (!todo.length) return Promise.resolve(false);
     appleCmdBusy = true;
     let chain = Promise.resolve();
     let did = false;
     for (const t of todo) {
-      chain = chain.then(() => G.apple.call("completeReminder", { id: t.externalId, completed: true }).then((r) => {
+      if (t.recurrence && !t.appleCompleteDue) continue;
+      chain = chain.then(() => G.apple.call("completeReminder", { id: t.externalId, completed: true, expectDue: t.appleCompleteDue || null }).then((r) => {
         const x = taskById(t.id);
         if (!x) return;
         if (r && r.ok) { x.appleComplete = "done"; x.appleError = null; did = true; }
@@ -1882,7 +1885,7 @@
       if (x.spent) x.actual = x.spent;
       x.done = true; x.doneAt = T.toISO(now());
       if (!isApple(x.source)) x.pinnedStart = null;
-      if (appleReal) { x.appleComplete = "pending"; x.appleError = null; }
+      if (appleReal) { x.appleComplete = "pending"; x.appleError = null; x.appleCompleteDue = String(x.appleDue || x.deadline || "").slice(0, 10) || null; }
       G.routines.logDone(s, x, true);
     }, null);
     if (appleReal) processAppleCommands();
