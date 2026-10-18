@@ -6,7 +6,7 @@
   "use strict";
   const T = G.time, S = G.scheduler, P = G.parser, ST = G.store, PR = G.proposals, A = G.assistant;
   const MIN = T.MIN;
-  const APP_VERSION = "0.11.2";
+  const APP_VERSION = "0.11.3";
   const $ = (sel) => document.querySelector(sel);
 
   // Per le prove: ?now=2026-10-15T09:00 fa finta che sia quell'ora
@@ -959,7 +959,11 @@
 
   // Richieste verso Apple Promemoria in attesa (fatte su questo dispositivo o arrivate dall'iPhone)
   let appleCmdBusy = false;
+  // SOSPESO (18/10/2026): completare i promemoria ripetuti creava doppioni in Apple Promemoria.
+  // Finché non è corretto, Daily Schedule NON scrive più nulla in Promemoria.
+  const APPLE_WRITES_ENABLED = false;
   function processAppleCommands() {
+    if (!APPLE_WRITES_ENABLED) return Promise.resolve(false);
     if (mode !== "real" || !G.apple.available() || appleCmdBusy) return Promise.resolve(false);
     const todo = state.tasks.filter((t) => t.source === "apple-reminders" && t.appleComplete === "pending" && t.externalId);
     if (!todo.length) return Promise.resolve(false);
